@@ -1,17 +1,34 @@
-const {app,BrowserWindow,ipcMain,dialog,safeStorage}=require('electron');const path=require('node:path');const fs=require('node:fs/promises');const {openDatabase}=require('./db.cjs');const {createStore}=require('./store.cjs');const {copyBackupAtomically}=require('./backup-target.cjs');const {parseDonorCsv,stringifyCsv,templateCsv,parseStudentCsv,parseDonationCsv,studentTemplateCsv,donationTemplateCsv}=require('./csv.cjs');const {createWorkbook,readWorkbook}=require('./excel.cjs');
-let win,store,currentUser=null,lockTimer,backupTarget=null,backupTargetStatus={configured:false,syncedAt:null,error:null};const IDLE_MS=5*60*1000;
+const {app,BrowserWindow,ipcMain,dialog,safeStorage,protocol}=require('electron');
+const Database=require('better-sqlite3');
+protocol.registerSchemesAsPrivileged([{scheme:'purim-map',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);const path=require('node:path');const fs=require('node:fs/promises');const {openDatabase}=require('./db.cjs');const {createStore}=require('./store.cjs');const {copyBackupAtomically}=require('./backup-target.cjs');const {parseDonorCsv,stringifyCsv,templateCsv,parseStudentCsv,parseDonationCsv,studentTemplateCsv,donationTemplateCsv}=require('./csv.cjs');const {createWorkbook,readWorkbook}=require('./excel.cjs');
+let win,store,mapDb=null,currentUser=null,lockTimer,backupTarget=null,backupTargetStatus={configured:false,syncedAt:null,error:null};const IDLE_MS=5*60*1000;
 function resetLock(){clearTimeout(lockTimer);if(currentUser)lockTimer=setTimeout(()=>{currentUser=null;win?.webContents.send('auth:locked')},IDLE_MS)}
 function createWindow(){win=new BrowserWindow({width:1500,height:950,minWidth:1100,minHeight:720,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});win.loadFile(path.join(__dirname,'index.html'));win.webContents.on('before-input-event',()=>resetLock())}
 async function readBackupTarget(){try{const p=path.join(app.getPath('userData'),'settings.json');const s=JSON.parse(await fs.readFile(p,'utf8'));return typeof s.backupTarget==='string'&&s.backupTarget?s.backupTarget:null}catch{return null}}
 async function saveBackupTarget(target){const p=path.join(app.getPath('userData'),'settings.json');let settings={};try{settings=JSON.parse(await fs.readFile(p,'utf8'))}catch{}settings.backupTarget=target;const temp=p+'.tmp';await fs.writeFile(temp,JSON.stringify(settings,null,2),{mode:0o600});await fs.rename(temp,p)}
 let backupQueue=Promise.resolve();
 function makeAutomaticBackup(){const run=async()=>{const dir=path.join(app.getPath('userData'),'backups');await fs.mkdir(dir,{recursive:true});const file=path.join(dir,'automatic-latest.json');const temp=file+'.tmp';await fs.writeFile(temp,JSON.stringify(store.exportData()),{mode:0o600});await fs.rename(temp,file);if(backupTarget){try{await copyBackupAtomically(file,backupTarget);backupTargetStatus={configured:true,syncedAt:new Date().toISOString(),error:null}}catch(error){backupTargetStatus={configured:true,syncedAt:backupTargetStatus.syncedAt,error:error.message}}}return file};backupQueue=backupQueue.then(run,run);return backupQueue}
-app.whenReady().then(async()=>{const db=openDatabase(app.getPath('userData'));store=createStore(db);backupTarget=await readBackupTarget();backupTargetStatus={configured:!!backupTarget,syncedAt:null,error:null};await makeAutomaticBackup();createWindow();app.on('activate',()=>{if(!BrowserWindow.getAllWindows().length)createWindow()})});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
+app.whenReady().then(async()=>{
+ const mapFile=app.isPackaged?path.join(process.resourcesPath,'maps','israel.mbtiles'):path.join(__dirname,'..','maps','israel.mbtiles');
+ try{mapDb=new Database(mapFile,{readonly:true,fileMustExist:true});mapDb.pragma('query_only=ON')}catch{mapDb=null}
+ protocol.handle('purim-map',async request=>{
+  try{
+   if(!mapDb)return new Response('מפת ישראל אינה זמינה במתקין זה',{status:503});
+   const u=new URL(request.url),m=u.pathname.match(/^\\/(\\d+)\\/(\\d+)\\/(\\d+)\\.pbf$/);
+   if(u.hostname!=='tiles'||!m)return new Response('Not found',{status:404});
+   const z=Number(m[1]),x=Number(m[2]),y=Number(m[3]);
+   if(!Number.isInteger(z)||z<0||z>16||x<0||y<0||x>=2**z||y>=2**z)return new Response('Not found',{status:404});
+   const row=mapDb.prepare('SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?').get(z,x,(2**z)-1-y);
+   if(!row)return new Response(null,{status:404});
+   return new Response(row.tile_data,{headers:{'Content-Type':'application/x-protobuf','Cache-Control':'public, max-age=86400'}});
+  }catch{return new Response('Tile read error',{status:500})}
+ });
+ const db=openDatabase(app.getPath('userData'));store=createStore(db);backupTarget=await readBackupTarget();backupTargetStatus={configured:!!backupTarget,syncedAt:null,error:null};await makeAutomaticBackup();createWindow();app.on('activate',()=>{if(!BrowserWindow.getAllWindows().length)createWindow()})});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 function actor(){return currentUser?.name||'מנהל מקומי'}function requireLogin(){if(!currentUser)throw Error('יש להתחבר מחדש')}function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 const PERMISSION_BY_CHANNEL={
  'app:bootstrap':'dashboard:read','frontdesk:lookup':'frontdesk:read','donor:list':'donors:read','donor:archive-list':'donors:read','donor:archive':'donors:write','donor:restore':'donors:write','donor:save':'donors:write','donor:donation':'donations:create','donor:history':'donors:read',
- 'student:list':'students:read','student:save':'students:write','street:list':'streets:read','street:save':'streets:write','street:alias':'streets:write','year:create':'settings:write','route:list':'routes:read','route:save':'routes:write','route:streets':'routes:read','route:street-assign':'routes:write','route:street-remove':'routes:write','route:pairs':'routes:read','route:pair-save':'routes:write','route:pair-remove':'routes:write',
+ 'student:list':'students:read','student:save':'students:write','map:status':'streets:read','street:list':'streets:read','street:save':'streets:write','street:alias':'streets:write','year:create':'settings:write','route:list':'routes:read','route:save':'routes:write','route:streets':'routes:read','route:street-assign':'routes:write','route:street-remove':'routes:write','route:pairs':'routes:read','route:pair-save':'routes:write','route:pair-remove':'routes:write',
  'backup:create':'backup:create','backup:target:get':'backup:create','backup:target:set':'backup:create','data:export':'backup:export','data:import':'backup:restore','data:excel-export':'backup:export','data:excel-import':'backup:restore','donors:csv-export':'donors:read','students:csv-export':'students:read','donations:csv-export':'donations:read','students:csv-import':'students:write','donations:csv-import':'donations:create','students:csv-template':'students:read','donations:csv-template':'donations:read','donors:csv-import':'donors:write','donors:csv-template':'donors:read','phone:list':'phone:read','phone:add':'phone:manage','phone:update':'phone:manage','phone:restore':'donors:write',
  'users:add':'users:manage','groups:list':'groups:read','groups:create':'groups:manage','groups:add-member':'groups:manage','groups:add-donor':'groups:manage','groups:members':'groups:read','groups:donors':'groups:read','groups:remove-member':'groups:manage','groups:remove-donor':'groups:manage',
  'audit:list':'audit:read','diagnostics:run':'diagnostics:read','print:donors':'print:donors'
@@ -37,6 +54,7 @@ ipcMain.handle('donor:save',async(_e,x)=>{requireLogin();const r=store.saveDonor
 ipcMain.handle('donor:donation',async(_e,x)=>{requireLogin();const r=store.addDonation(x,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('donor:history',(_e,id)=>{requireLogin();store.db.prepare('INSERT INTO access_log(actor,action,entity_id,created_at) VALUES(?,?,?,?)').run(actor(),'צפייה בהיסטוריית תרומות',String(id),new Date().toISOString());return store.db.prepare('SELECT * FROM donations WHERE donor_id=? ORDER BY year DESC,created_at DESC').all(id)});
 ipcMain.handle('student:list',()=>{requireLogin();return store.listStudents()});
+ipcMain.handle('map:status',()=>({available:!!mapDb,source:'OpenStreetMap',maxZoom:16,attribution:'© OpenStreetMap contributors · ODbL'}));
 ipcMain.handle('street:list',(_e,q)=>{requireLogin();return store.listStreets(q||'')});
 ipcMain.handle('street:save',async(_e,x)=>{requireLogin();const r=store.saveStreet(x,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('street:alias',async(_e,x)=>{requireLogin();const r=store.addStreetAlias(x.streetId,x.alias,actor());await makeAutomaticBackup();return r});
