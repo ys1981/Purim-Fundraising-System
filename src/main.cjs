@@ -4,7 +4,7 @@ function resetLock(){clearTimeout(lockTimer);if(currentUser)lockTimer=setTimeout
 function createWindow(){win=new BrowserWindow({width:1500,height:950,minWidth:1100,minHeight:720,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});win.loadFile(path.join(__dirname,'index.html'));win.webContents.on('before-input-event',()=>resetLock())}
 async function makeAutomaticBackup(){const dir=path.join(app.getPath('userData'),'backups');await fs.mkdir(dir,{recursive:true});const file=path.join(dir,'automatic-latest.json');const temp=file+'.tmp';await fs.writeFile(temp,JSON.stringify(store.exportData()),{mode:0o600});await fs.rename(temp,file);return file}
 app.whenReady().then(async()=>{const db=openDatabase(app.getPath('userData'));store=createStore(db);await makeAutomaticBackup();createWindow();app.on('activate',()=>{if(!BrowserWindow.getAllWindows().length)createWindow()})});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
-function actor(){return currentUser?.name||'מנהל מקומי'}function requireLogin(){if(!currentUser)throw Error('יש להתחבר מחדש')}function escapeHtml(value){return String(value??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]))}
+function actor(){return currentUser?.name||'מנהל מקומי'}function requireLogin(){if(!currentUser)throw Error('יש להתחבר מחדש')}function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 const PERMISSION_BY_CHANNEL={
  'app:bootstrap':'dashboard:read','donor:list':'donors:read','donor:save':'donors:write','donor:donation':'donations:create','donor:history':'donors:read',
