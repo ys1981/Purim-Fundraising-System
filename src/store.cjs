@@ -46,7 +46,7 @@ function createStore(db){
   if(!Number.isSafeInteger(donorId)||donorId<=0)throw Error('יש לבחור תורם תקין');
   if(!Number.isInteger(year)||year<2000||year>2200)throw Error('שנת ההתחייבות אינה תקינה');
   if(!Number.isFinite(amount)||amount<=0)throw Error('סכום ההתחייבות חייב להיות גדול מאפס');
-  if(dueDate&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate))throw Error('תאריך היעד אינו תקין');
+  if(dueDate){const date=new Date(dueDate+'T00:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)||!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==dueDate)throw Error('תאריך היעד אינו תקין');}
   const donor=db.prepare("SELECT * FROM donors WHERE id=? AND status='active'").get(donorId);
   if(!donor)throw Error('ניתן להוסיף התחייבות רק לתורם פעיל');
   const stamp=now();
