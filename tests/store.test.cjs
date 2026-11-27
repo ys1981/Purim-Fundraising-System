@@ -284,3 +284,44 @@ test('offline campaign report summarizes totals, daily activity and data quality
  assert.equal(report.quality.duplicateAddresses,1);
  assert.equal(report.daily.reduce((sum,row)=>sum+row.amount,0),300);
 });
+
+test('commitments accept partial payments, prevent overpayment and create printable receipt records',t=>{
+ const {store}=fixture(t);
+ const donor=store.saveDonor({firstName:'משה',lastName:'לוי',city:'בני ברק',street:'חזון איש',building:'12'});
+ const commitmentId=store.addCommitment({donorId:donor.id,year:2027,amount:500,dueDate:'2027-03-01',notes:'התחייבות שנתית'});
+ assert.ok(commitmentId>0);
+ const first=store.addDonation({donorId:donor.id,year:2027,amount:200,commitmentId,paymentMethod:'cash',notes:'תשלום ראשון'});
+ assert.match(first.receiptNumber,/^PF-2027-/);
+ assert.equal(store.listCommitments(2027)[0].paid_amount,200);
+ assert.equal(store.listCommitments(2027)[0].outstanding_amount,300);
+ assert.throws(()=>store.addDonation({donorId:donor.id,year:2027,amount:301,commitmentId,paymentMethod:'check'}),/יתרת ההתחייבות/);
+ const second=store.addDonation({donorId:donor.id,year:2027,amount:300,commitmentId,paymentMethod:'transfer'});
+ assert.ok(second.receiptNumber);
+ assert.equal(store.listCommitments(2027)[0].status,'paid');
+ assert.equal(store.listCommitments(2027)[0].outstanding_amount,0);
+ assert.equal(store.listPayments(2027).length,2);
+ assert.equal(store.getReceipt(first.id).receipt_number,first.receiptNumber);
+});
+test('commitments reject wrong donor, wrong year and invalid values',t=>{
+ const {store}=fixture(t);
+ const donor=store.saveDonor({firstName:'דוד',lastName:'כהן',city:'ירושלים',street:'יפו'});
+ const other=store.saveDonor({firstName:'יעקב',lastName:'ישראל',city:'ירושלים',street:'הנביאים'});
+ const id=store.addCommitment({donorId:donor.id,year:2027,amount:100});
+ assert.throws(()=>store.addDonation({donorId:other.id,year:2027,amount:20,commitmentId:id}),/אינה שייכת/);
+ assert.throws(()=>store.addDonation({donorId:donor.id,year:2028,amount:20,commitmentId:id}),/אינה שייכת/);
+ assert.throws(()=>store.addCommitment({donorId:donor.id,year:2027,amount:0}),/גדול מאפס/);
+});
+test('financial records are included in full offline JSON backup and restore',t=>{
+ const {store}=fixture(t);
+ const donor=store.saveDonor({firstName:'אהרן',lastName:'פרידמן',city:'חיפה',street:'הרצל'});
+ const commitmentId=store.addCommitment({donorId:donor.id,year:2027,amount:250});
+ store.addDonation({donorId:donor.id,year:2027,amount:50,commitmentId});
+ const backup=store.exportData();
+ assert.equal(backup.tables.commitments.length,1);
+ assert.equal(backup.tables.donations.length,1);
+ store.importData({format:'purim-fundraising-backup',version:1,createdAt:backup.createdAt,tables:{...backup.tables,commitments:[],donations:[]}});
+ assert.equal(store.listCommitments(2027).length,0);
+ store.importData(backup);
+ assert.equal(store.listCommitments(2027)[0].outstanding_amount,200);
+ assert.equal(store.listPayments(2027).length,1);
+});

@@ -7,7 +7,8 @@ function openDatabase(userData){
  db.exec(`
  CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS donors(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT DEFAULT 'הרב',first_name TEXT NOT NULL,last_name TEXT NOT NULL,city TEXT NOT NULL,street TEXT NOT NULL,building TEXT DEFAULT '',entrance TEXT DEFAULT '',apartment TEXT DEFAULT '',floor TEXT DEFAULT '',area TEXT DEFAULT '',group_name TEXT DEFAULT '',print_notes TEXT DEFAULT '',private_notes TEXT DEFAULT '',phone TEXT DEFAULT '',email TEXT DEFAULT '',collection_time TEXT DEFAULT 'day14',status TEXT DEFAULT 'active',archive_until_year INTEGER,archive_reason TEXT,do_not_contact INTEGER DEFAULT 0,latitude REAL,longitude REAL,location_status TEXT DEFAULT 'unverified',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS donations(id INTEGER PRIMARY KEY AUTOINCREMENT,donor_id INTEGER NOT NULL REFERENCES donors(id) ON DELETE CASCADE,year INTEGER NOT NULL,occasion TEXT DEFAULT 'day14',amount REAL NOT NULL CHECK(amount>=0),notes TEXT DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS commitments(id INTEGER PRIMARY KEY AUTOINCREMENT,donor_id INTEGER NOT NULL REFERENCES donors(id) ON DELETE CASCADE,year INTEGER NOT NULL,amount REAL NOT NULL CHECK(amount>0),due_date TEXT,notes TEXT DEFAULT '',status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','paid','cancelled')),created_at TEXT NOT NULL,created_by TEXT DEFAULT '');
+ CREATE TABLE IF NOT EXISTS donations(id INTEGER PRIMARY KEY AUTOINCREMENT,donor_id INTEGER NOT NULL REFERENCES donors(id) ON DELETE CASCADE,year INTEGER NOT NULL,occasion TEXT DEFAULT 'day14',amount REAL NOT NULL CHECK(amount>=0),notes TEXT DEFAULT '',commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL,payment_method TEXT NOT NULL DEFAULT 'cash',receipt_number TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS idx_donors_address ON donors(city,street,building); CREATE INDEX IF NOT EXISTS idx_donations_year ON donations(year,donor_id);
  CREATE TABLE IF NOT EXISTS classes(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE NOT NULL,sort_order INTEGER NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS students(id INTEGER PRIMARY KEY AUTOINCREMENT,first_name TEXT NOT NULL,last_name TEXT NOT NULL,class_id INTEGER REFERENCES classes(id),phone TEXT DEFAULT '',father_phone TEXT DEFAULT '',notes TEXT DEFAULT '',custom_json TEXT DEFAULT '{}',status TEXT DEFAULT 'active',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
@@ -31,6 +32,11 @@ function openDatabase(userData){
  CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,year INTEGER NOT NULL,label TEXT NOT NULL,data_json TEXT NOT NULL,created_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS map_features(id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,name TEXT NOT NULL,geojson TEXT NOT NULL,source TEXT DEFAULT 'user');
  `);
+ const donationColumns=new Set(db.prepare('PRAGMA table_info(donations)').all().map(c=>c.name));
+ if(!donationColumns.has('commitment_id'))db.exec('ALTER TABLE donations ADD COLUMN commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL');
+ if(!donationColumns.has('payment_method'))db.exec("ALTER TABLE donations ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");
+ if(!donationColumns.has('receipt_number'))db.exec('ALTER TABLE donations ADD COLUMN receipt_number TEXT');
+ db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_donations_receipt_number ON donations(receipt_number) WHERE receipt_number IS NOT NULL');
  const now=new Date().toISOString();
  const insert=db.prepare('INSERT OR IGNORE INTO classes(name,sort_order) VALUES(?,?)');
  ['שיעור א','שיעור ב','שיעור ג','קיבוץ'].forEach((n,i)=>insert.run(n,i));

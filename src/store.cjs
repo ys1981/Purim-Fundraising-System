@@ -8,7 +8,62 @@ function createStore(db){
  function findDonorByCode(code){const value=String(code??'').trim();if(!/^\d+$/.test(value))return null;return db.prepare(`SELECT d.*,COALESCE((SELECT SUM(amount) FROM donations WHERE donor_id=d.id),0) total_donations FROM donors d WHERE d.id=? AND d.status='active' AND COALESCE(d.do_not_contact,0)=0`).get(Number(value)||-1)||null}
  function listDonors(q=''){const like='%'+q+'%';return db.prepare(`SELECT d.*,COALESCE((SELECT SUM(amount) FROM donations WHERE donor_id=d.id),0) total_donations FROM donors d WHERE d.status='active' AND COALESCE(d.do_not_contact,0)=0 AND (?='' OR d.first_name||' '||d.last_name||d.city||d.street||d.phone LIKE ?) ORDER BY d.id DESC`).all(q,like)}
  function saveDonor(x,actor='מנהל'){const input=donorInput(x),stamp=now();return db.transaction(()=>{let id=x.id,before=id?db.prepare('SELECT * FROM donors WHERE id=?').get(id):null;if(id&&!before)throw Error('התורם לא נמצא');if(id){const sets=cols.map(c=>c+'=@'+c).join(',');db.prepare('UPDATE donors SET '+sets+',updated_at=@updated_at WHERE id=@id').run({...input,updated_at:stamp,id});}else{const keys=cols.join(',');const result=db.prepare('INSERT INTO donors('+keys+',created_at,updated_at) VALUES('+cols.map(c=>'@'+c).join(',')+',@created_at,@updated_at)').run({...input,created_at:stamp,updated_at:stamp});id=result.lastInsertRowid;}const after=db.prepare('SELECT * FROM donors WHERE id=?').get(id);audit(actor,before?'עדכון תורם':'הוספת תורם','donor',id,before,after);return after;})()}
- function addDonation(x,actor='מנהל'){const amount=Number(x?.amount),year=Number(x?.year),donorId=Number(x?.donorId);if(!Number.isFinite(amount)||amount<=0)throw Error('סכום התרומה חייב להיות גדול מאפס');if(!Number.isInteger(year)||year<2000||year>2200)throw Error('שנת התרומה אינה תקינה');if(!Number.isSafeInteger(donorId)||donorId<=0)throw Error('קוד התורם אינו תקין');return db.transaction(()=>{const donor=db.prepare('SELECT * FROM donors WHERE id=?').get(donorId);if(!donor)throw Error('התורם לא נמצא');if(donor.status!=='active')throw Error('לא ניתן לרשום תרומה לתורם שאינו פעיל');if(donor.do_not_contact)throw Error('התורם מוגדר ללא פנייה');const t=now();const r=db.prepare('INSERT INTO donations(donor_id,year,occasion,amount,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(donorId,year,x.occasion||'day14',amount,x.notes||'',t,t);audit(actor,'רישום תרומה','donation',r.lastInsertRowid,null,{...x,donorId,year,amount});return r.lastInsertRowid;})()}
+ function addDonation(x,actor='מנהל'){
+  const amount=Number(x?.amount),year=Number(x?.year),donorId=Number(x?.donorId),method=String(x?.paymentMethod||'cash');
+  const commitmentId=x?.commitmentId?Number(x.commitmentId):null;
+  if(!Number.isFinite(amount)||amount<=0)throw Error('סכום התשלום חייב להיות גדול מאפס');
+  if(!Number.isInteger(year)||year<2000||year>2200)throw Error('שנת התרומה אינה תקינה');
+  if(!Number.isSafeInteger(donorId)||donorId<=0)throw Error('קוד התורם אינו תקין');
+  if(!['cash','check','transfer','credit','other'].includes(method))throw Error('אמצעי התשלום אינו תקין');
+  if(commitmentId!==null&&(!Number.isSafeInteger(commitmentId)||commitmentId<=0))throw Error('מספר ההתחייבות אינו תקין');
+  const rounded=Math.round(amount*100)/100;
+  return db.transaction(()=>{
+   const donor=db.prepare('SELECT * FROM donors WHERE id=?').get(donorId);
+   if(!donor)throw Error('התורם לא נמצא');
+   if(donor.status!=='active')throw Error('לא ניתן לרשום תשלום לתורם שאינו פעיל');
+   if(donor.do_not_contact)throw Error('התורם מוגדר ללא פנייה');
+   let commitment=null;
+   if(commitmentId!==null){
+    commitment=db.prepare("SELECT * FROM commitments WHERE id=? AND status<>'cancelled'").get(commitmentId);
+    if(!commitment||commitment.donor_id!==donorId||commitment.year!==year)throw Error('ההתחייבות אינה שייכת לתורם או לשנת הקמפיין שנבחרו');
+    const paid=db.prepare('SELECT COALESCE(SUM(amount),0) amount FROM donations WHERE commitment_id=?').get(commitmentId).amount;
+    if(rounded>Math.round((commitment.amount-paid)*100)/100+0.00001)throw Error('סכום התשלום גבוה מיתרת ההתחייבות');
+   }
+   const stamp=now();
+   const result=db.prepare('INSERT INTO donations(donor_id,year,occasion,amount,notes,commitment_id,payment_method,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(donorId,year,x.occasion||'day14',rounded,String(x.notes||''),commitmentId,method,stamp,stamp);
+   const id=Number(result.lastInsertRowid),receipt='PF-'+year+'-'+String(id).padStart(6,'0');
+   db.prepare('UPDATE donations SET receipt_number=? WHERE id=?').run(receipt,id);
+   if(commitmentId!==null){
+    const paid=db.prepare('SELECT COALESCE(SUM(amount),0) amount FROM donations WHERE commitment_id=?').get(commitmentId).amount;
+    if(paid>=commitment.amount-0.00001)db.prepare("UPDATE commitments SET status='paid' WHERE id=?").run(commitmentId);
+   }
+   audit(actor,'רישום תשלום והפקת קבלה','donation',id,null,{...x,donorId,year,amount:rounded,paymentMethod:method,commitmentId,receiptNumber:receipt});
+   return {id,receiptNumber:receipt};
+  })();
+ }
+ function addCommitment(x,actor='מנהל'){
+  const donorId=Number(x?.donorId),year=Number(x?.year),amount=Number(x?.amount),dueDate=x?.dueDate?String(x.dueDate):null;
+  if(!Number.isSafeInteger(donorId)||donorId<=0)throw Error('יש לבחור תורם תקין');
+  if(!Number.isInteger(year)||year<2000||year>2200)throw Error('שנת ההתחייבות אינה תקינה');
+  if(!Number.isFinite(amount)||amount<=0)throw Error('סכום ההתחייבות חייב להיות גדול מאפס');
+  if(dueDate&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(dueDate))throw Error('תאריך היעד אינו תקין');
+  const donor=db.prepare("SELECT * FROM donors WHERE id=? AND status='active'").get(donorId);
+  if(!donor)throw Error('ניתן להוסיף התחייבות רק לתורם פעיל');
+  const stamp=now();
+  const result=db.prepare("INSERT INTO commitments(donor_id,year,amount,due_date,notes,status,created_at,created_by) VALUES(?,?,?,?,?,'open',?,?)").run(donorId,year,Math.round(amount*100)/100,dueDate,String(x.notes||''),stamp,actor);
+  const id=Number(result.lastInsertRowid);
+  audit(actor,'רישום התחייבות לתרומה','commitment',id,null,{donorId,year,amount,dueDate,notes:x.notes||''});
+  return id;
+ }
+ function listCommitments(year){
+  return db.prepare("SELECT c.*,d.title,d.first_name,d.last_name,d.city,d.street,d.building,COALESCE((SELECT SUM(amount) FROM donations p WHERE p.commitment_id=c.id),0) paid_amount,ROUND(c.amount-COALESCE((SELECT SUM(amount) FROM donations p WHERE p.commitment_id=c.id),0),2) outstanding_amount FROM commitments c JOIN donors d ON d.id=c.donor_id WHERE c.year=? ORDER BY CASE c.status WHEN 'open' THEN 0 WHEN 'paid' THEN 1 ELSE 2 END,c.due_date,c.id").all(Number(year));
+ }
+ function listPayments(year){
+  return db.prepare("SELECT p.*,d.title,d.first_name,d.last_name,d.city,d.street,d.building,c.amount commitment_amount FROM donations p JOIN donors d ON d.id=p.donor_id LEFT JOIN commitments c ON c.id=p.commitment_id WHERE p.year=? ORDER BY p.id DESC").all(Number(year));
+ }
+ function getReceipt(id){
+  return db.prepare("SELECT p.*,d.title,d.first_name,d.last_name,d.city,d.street,d.building,d.phone,c.amount commitment_amount FROM donations p JOIN donors d ON d.id=p.donor_id LEFT JOIN commitments c ON c.id=p.commitment_id WHERE p.id=?").get(Number(id))||null;
+ }
  function listArchivedDonors(q=''){const like='%'+q+'%';return db.prepare(`SELECT d.*,COALESCE((SELECT SUM(amount) FROM donations WHERE donor_id=d.id),0) total_donations FROM donors d WHERE d.status='archived' AND (?='' OR d.first_name||' '||d.last_name||d.city||d.street||d.phone LIKE ?) ORDER BY d.id DESC`).all(q,like)}
  function archiveDonor(id,reason,untilYear,actor='מנהל'){const before=db.prepare('SELECT * FROM donors WHERE id=?').get(id);if(!before)throw Error('התורם לא נמצא');if(before.status==='archived')throw Error('התורם כבר נמצא בארכיון');if(!String(reason||'').trim())throw Error('יש לציין סיבת העברה לארכיון');db.prepare("UPDATE donors SET status='archived',archive_reason=?,archive_until_year=?,updated_at=? WHERE id=?").run(String(reason).trim(),untilYear?Number(untilYear):null,now(),id);const after=db.prepare('SELECT * FROM donors WHERE id=?').get(id);audit(actor,'העברת תורם לארכיון','donor',id,before,after);return after}
  function restoreDonor(id,actor='מנהל'){const before=db.prepare('SELECT * FROM donors WHERE id=?').get(id);if(!before)throw Error('התורם לא נמצא');if(before.status!=='archived')throw Error('התורם אינו בארכיון');db.prepare("UPDATE donors SET status='active',archive_reason=NULL,archive_until_year=NULL,updated_at=? WHERE id=?").run(now(),id);const after=db.prepare('SELECT * FROM donors WHERE id=?').get(id);audit(actor,'החזרת תורם מהארכיון','donor',id,before,after);return after}
@@ -34,10 +89,10 @@ function createStore(db){
  function createFirstAdmin(x){if(db.prepare('SELECT COUNT(*) n FROM users').get().n)throw Error('כבר קיים משתמש במערכת');if(String(x.code||'').length<4)throw Error('הקוד חייב להכיל לפחות 4 תווים');const id=db.prepare('INSERT INTO users(username,display_name,password_hash,role,permissions_json) VALUES(?,?,?,?,?)').run('admin',x.displayName||'מנהל ראשי',hashCode(x.code),'admin',JSON.stringify({permissions:['*']})).lastInsertRowid;audit('מערכת','יצירת מנהל ראשי','user',id,null,{username:'admin'});return id}
  function addUser(x,actor='מנהל'){if(!x.username||!x.displayName||String(x.code||'').length<4)throw Error('נדרשים שם משתמש, שם תצוגה וקוד בן 4 תווים לפחות');const r=db.prepare('INSERT INTO users(username,display_name,password_hash,role,permissions_json,allowed_from,allowed_until) VALUES(?,?,?,?,?,?,?)').run(x.username,x.displayName,hashCode(x.code),x.role||'custom',JSON.stringify({permissions:x.permissions||ROLE_PRESETS[x.role]||[]}),x.allowedFrom||null,x.allowedUntil||null);audit(actor,'הוספת משתמש','user',r.lastInsertRowid,null,{username:x.username,role:x.role});return r.lastInsertRowid}
  function login(id,code){const u=db.prepare('SELECT * FROM users WHERE id=? AND active=1').get(id);if(!u||!verifyCode(code,u.password_hash)||!allowed(u,'dashboard:read'))throw Error('פרטי הכניסה שגויים או שהגישה אינה פעילה');db.prepare('INSERT INTO access_log(actor,action,created_at) VALUES(?,?,?)').run(u.display_name,'כניסה למערכת',now());return {id:u.id,name:u.display_name,role:u.role,permissions:JSON.parse(u.permissions_json||'{}').permissions||ROLE_PRESETS[u.role]||[]}}
- function exportData(){const tables=['donors','donations','students','classes','parents','years','collection_events','streets','street_aliases','routes','route_streets','route_pairs','purim_groups','group_members','group_donors','phone_queue','tasks','users','audit','access_log','print_templates','snapshots','map_features'];const out={format:'purim-fundraising-backup',version:1,createdAt:now(),tables:{}};for(const t of tables)out.tables[t]=db.prepare('SELECT * FROM '+t).all();return out}
+ function exportData(){const tables=['donors','commitments','donations','students','classes','parents','years','collection_events','streets','street_aliases','routes','route_streets','route_pairs','purim_groups','group_members','group_donors','phone_queue','tasks','users','audit','access_log','print_templates','snapshots','map_features'];const out={format:'purim-fundraising-backup',version:1,createdAt:now(),tables:{}};for(const t of tables)out.tables[t]=db.prepare('SELECT * FROM '+t).all();return out}
  function importData(data,actor='מנהל'){
   if(data?.format!=='purim-fundraising-backup'||!data.tables||typeof data.tables!=='object'||Array.isArray(data.tables))throw Error('קובץ גיבוי לא מזוהה');
-  const insertOrder=['classes','years','donors','students','parents','streets','collection_events','routes','route_streets','route_pairs','purim_groups','group_members','group_donors','donations','street_aliases','phone_queue','tasks','users','audit','access_log','print_templates','snapshots','map_features'];
+  const insertOrder=['classes','years','donors','commitments','students','parents','streets','collection_events','routes','route_streets','route_pairs','purim_groups','group_members','group_donors','donations','street_aliases','phone_queue','tasks','users','audit','access_log','print_templates','snapshots','map_features'];
   // Validate every table, column and value before deleting any current data.
   const preparedRows={};
   for(const table of insertOrder){
@@ -57,7 +112,7 @@ function createStore(db){
     return row;
    });
   }
-  const deleteOrder=['group_members','group_donors','route_pairs','route_streets','street_aliases','phone_queue','tasks','donations','parents','routes','purim_groups','collection_events','students','donors','streets','classes','years','users','audit','access_log','print_templates','snapshots','map_features'];
+  const deleteOrder=['group_members','group_donors','route_pairs','route_streets','street_aliases','phone_queue','tasks','donations','commitments','parents','routes','purim_groups','collection_events','students','donors','streets','classes','years','users','audit','access_log','print_templates','snapshots','map_features'];
   return db.transaction(()=>{
    const backup=exportData();
    for(const table of deleteOrder)db.prepare('DELETE FROM "'+table+'"').run();
@@ -163,6 +218,6 @@ function createStore(db){
  function removeGroupDonor(groupId,donorId,actor='מנהל'){const r=db.prepare('DELETE FROM group_donors WHERE group_id=? AND donor_id=?').run(Number(groupId),Number(donorId));if(r.changes)audit(actor,'הסרת תורם מקבוצה','group',groupId,null,{donorId});return r.changes>0}
  function addGroupMember(groupId,studentId,actor='מנהל'){db.prepare('INSERT OR IGNORE INTO group_members(group_id,student_id) VALUES(?,?)').run(groupId,studentId);audit(actor,'שיוך בחור לקבוצה','group',groupId,null,{studentId});return true}
  function addGroupDonor(groupId,donorId,actor='מנהל'){db.prepare('INSERT OR IGNORE INTO group_donors(group_id,donor_id) VALUES(?,?)').run(groupId,donorId);audit(actor,'שיוך תורם לקבוצה','group',groupId,null,{donorId});return true}
- return {db,audit,createFirstAdmin,importDonors,importStudents,importDonations,importWorkbookData,findDonorByCode,listDonors,listArchivedDonors,archiveDonor,restoreDonor,saveDonor,addDonation,listStudents,saveStudent,listStreets,saveStreet,addStreetAlias,listRouteStreets,assignRouteStreet,removeRouteStreet,listRoutePairs,saveRoutePair,removeRoutePair,createYear,listAudit,summary,campaignReport,addUser,login,exportData,importData,listPhoneQueue,enqueuePhone,updatePhoneQueue,restorePhoneDonor,listGroups,createGroup,listGroupMembers,listGroupDonors,addGroupMember,addGroupDonor,removeGroupMember,removeGroupDonor};
+ return {db,audit,createFirstAdmin,addCommitment,listCommitments,listPayments,getReceipt,importDonors,importStudents,importDonations,importWorkbookData,findDonorByCode,listDonors,listArchivedDonors,archiveDonor,restoreDonor,saveDonor,addDonation,listStudents,saveStudent,listStreets,saveStreet,addStreetAlias,listRouteStreets,assignRouteStreet,removeRouteStreet,listRoutePairs,saveRoutePair,removeRoutePair,createYear,listAudit,summary,campaignReport,addUser,login,exportData,importData,listPhoneQueue,enqueuePhone,updatePhoneQueue,restorePhoneDonor,listGroups,createGroup,listGroupMembers,listGroupDonors,addGroupMember,addGroupDonor,removeGroupMember,removeGroupDonor};
 }
 module.exports={createStore};
