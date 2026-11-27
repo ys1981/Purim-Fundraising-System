@@ -162,3 +162,14 @@ test('backup import rejects malformed table rows before deleting existing record
  assert.equal(store.listDonors().length,1);
  assert.equal(store.listDonors()[0].first_name,'נשמר');
 });
+
+
+test('donation entry rejects zero, negative and invalid amounts and invalid years or donor ids',t=>{
+ const {store}=fixture(t);
+ const donor=store.saveDonor({firstName:'בדיקה',lastName:'תקינה',city:'ירושלים',street:'יפו'});
+ for(const amount of [0,-1,'abc',NaN,Infinity]) assert.throws(()=>store.addDonation({donorId:donor.id,year:2027,amount}),/סכום התרומה/);
+ for(const year of [0,1999,2201,2027.5,'שנה']) assert.throws(()=>store.addDonation({donorId:donor.id,year,amount:10}),/שנת התרומה/);
+ for(const donorId of [0,-1,1.5,'abc',null]) assert.throws(()=>store.addDonation({donorId,year:2027,amount:10}),/קוד התורם/);
+ assert.equal(store.db.prepare('SELECT COUNT(*) n FROM donations').get().n,0);
+ assert.equal(store.addDonation({donorId:donor.id,year:2027,amount:0.5})>0,true);
+});
