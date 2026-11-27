@@ -1,0 +1,5 @@
+const test=require('node:test');const assert=require('node:assert/strict');const {parseCsv,parseDonorCsv,stringifyCsv,templateCsv}=require('../src/csv.cjs');
+test('CSV parser preserves quoted commas, quotes and newlines',()=>{const rows=parseCsv('שם,הערה\r\n"ישראל, כהן","שורה 1\nשורה 2"\r\n');assert.deepEqual(rows,[['שם','הערה'],['ישראל, כהן','שורה 1\nשורה 2']])});
+test('donor CSV round-trips Hebrew headers and contact preference',()=>{const source=stringifyCsv([{firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא',phone:'0501234567',privateNotes:'הערה, עם פסיק',doNotContact:1}]);const rows=parseDonorCsv(source);assert.equal(rows[0].firstName,'דוד');assert.equal(rows[0].privateNotes,'הערה, עם פסיק');assert.equal(rows[0].doNotContact,1)});
+test('donor CSV requires mandatory identity and address columns',()=>{assert.throws(()=>parseDonorCsv('שם פרטי,שם משפחה\nדוד,לוי'),/חסרה עמודה נדרשת/);assert.equal(parseCsv(templateCsv()).length,1)});
+test('CSV parser rejects unterminated quoted cells',()=>{assert.throws(()=>parseCsv('a,b\n"bad,bad'),/מרכאות לא סגורות/)});
