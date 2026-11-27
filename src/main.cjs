@@ -9,13 +9,13 @@ const PERMISSION_BY_CHANNEL={
  'app:bootstrap':'dashboard:read','donor:list':'donors:read','donor:save':'donors:write','donor:donation':'donations:create','donor:history':'donors:read',
  'student:list':'students:read','student:save':'students:write','year:create':'settings:write','route:list':'routes:read','route:save':'routes:write',
  'backup:create':'backup:create','data:export':'backup:export','data:import':'backup:restore','phone:list':'phone:read','phone:add':'phone:manage','phone:update':'phone:manage','phone:restore':'donors:write',
- 'groups:list':'groups:read','groups:create':'groups:manage','groups:add-member':'groups:manage','groups:add-donor':'groups:manage',
+ 'users:add':'users:manage','groups:list':'groups:read','groups:create':'groups:manage','groups:add-member':'groups:manage','groups:add-donor':'groups:manage',
  'audit:list':'audit:read','diagnostics:run':'diagnostics:read','print:donors':'print:donors'
 };
 const registerHandle=ipcMain.handle.bind(ipcMain);
 ipcMain.handle=(channel,handler)=>registerHandle(channel,(event,...args)=>{const permission=PERMISSION_BY_CHANNEL[channel];if(permission){requireLogin();if(!currentUser.permissions?.includes('*')&&!currentUser.permissions?.includes(permission))throw Error('אין לך הרשאה לבצע פעולה זו');}return handler(event,...args)});
 
-ipcMain.handle('auth:setup-status',()=>store.db.prepare('SELECT COUNT(*) n FROM users').get().n===0);\nipcMain.handle('auth:create-admin',async(_e,x)=>{const id=store.createFirstAdmin(x);await makeAutomaticBackup();return id});\nipcMain.handle('auth:list',()=>store.db.prepare('SELECT id,display_name,role FROM users WHERE active=1 ORDER BY display_name').all());
+ipcMain.handle('auth:setup-status',()=>store.db.prepare('SELECT COUNT(*) n FROM users').get().n===0);\nipcMain.handle('auth:create-admin',async(_e,x)=>{const id=store.createFirstAdmin(x);await makeAutomaticBackup();return id});\nipcMain.handle('users:add',async(_e,x)=>{requireLogin();const r=store.addUser(x,actor());await makeAutomaticBackup();return r});\nipcMain.handle('auth:list',()=>store.db.prepare('SELECT id,display_name,role FROM users WHERE active=1 ORDER BY display_name').all());
 ipcMain.handle('auth:login',(_e,x)=>{currentUser=store.login(x.id,x.code);resetLock();return currentUser});
 ipcMain.handle('auth:logout',()=>{currentUser=null;clearTimeout(lockTimer);return true});
 ipcMain.handle('app:bootstrap',()=>{requireLogin();return {user:currentUser,summary:store.summary(new Date().getFullYear()),donors:store.listDonors(),students:store.listStudents(),classes:store.db.prepare('SELECT * FROM classes ORDER BY sort_order').all(),years:store.db.prepare('SELECT * FROM years ORDER BY year DESC').all(),audit:store.listAudit().slice(0,30)}});
