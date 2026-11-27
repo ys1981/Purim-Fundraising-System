@@ -31,7 +31,16 @@ test('donor, donation and phone transfer preserve donor data',t=>{
  assert.equal(store.listDonors().length,1);
 });
 
-test('front desk donor lookup uses numeric donor code and excludes archived/do-not-contact donors',t=>{\n const {store}=fixture(t);\n const donor=store.saveDonor({firstName:'שלום',lastName:'כהן',city:'בני ברק',street:'רבי עקיבא'});\n assert.equal(store.findDonorByCode(String(donor.id)).id,donor.id);\n assert.equal(store.findDonorByCode('abc'),null);\n store.archiveDonor(donor.id,'בדיקה');\n assert.equal(store.findDonorByCode(String(donor.id)),null);\n});\n\ntest('campaign groups can be created and linked to students and donors',t=>{
+test('front desk donor lookup uses numeric donor code and excludes archived/do-not-contact donors',t=>{
+ const {store}=fixture(t);
+ const donor=store.saveDonor({firstName:'שלום',lastName:'כהן',city:'בני ברק',street:'רבי עקיבא'});
+ assert.equal(store.findDonorByCode(String(donor.id)).id,donor.id);
+ assert.equal(store.findDonorByCode('abc'),null);
+ store.archiveDonor(donor.id,'בדיקה');
+ assert.equal(store.findDonorByCode(String(donor.id)),null);
+});
+
+test('campaign groups can be created and linked to students and donors',t=>{
  const {store}=fixture(t);
  const yearId=store.createYear(2027);
  const studentId=store.saveStudent({firstName:'משה',lastName:'כהן'});
