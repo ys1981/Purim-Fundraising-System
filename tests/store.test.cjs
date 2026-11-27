@@ -94,3 +94,15 @@ test('donors can be archived with a reason and restored without losing history',
  assert.equal(store.listDonors()[0].total_donations,360);
  assert.equal(db.prepare('SELECT archive_reason FROM donors WHERE id=?').get(donor.id).archive_reason,null);
 });
+
+test('street directory stores areas and aliases without alias collisions',t=>{
+ const {store,db}=fixture(t);
+ const a=store.saveStreet({city:'בני ברק',name:'רבי עקיבא',area:'מרכז',lowNumber:1,highNumber:99,parity:'odd'});
+ const b=store.saveStreet({city:'ירושלים',name:'יפו',area:'מרכז'});
+ store.addStreetAlias(a.id,'ר׳ עקיבא');
+ assert.equal(store.listStreets('עקיבא').length,1);
+ assert.equal(store.listStreets()[0].aliases,'ר׳ עקיבא');
+ assert.throws(()=>store.addStreetAlias(b.id,'ר׳ עקיבא'),/כבר משויך/);
+ assert.throws(()=>store.saveStreet({city:'בני ברק',name:'רבי עקיבא',area:'מרכז'}),/כבר קיים/);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM streets').get().n,2);
+});
