@@ -16,8 +16,10 @@ const PERMISSION_BY_CHANNEL={
  'users:add':'users:manage','groups:list':'groups:read','groups:create':'groups:manage','groups:add-member':'groups:manage','groups:add-donor':'groups:manage','groups:members':'groups:read','groups:donors':'groups:read','groups:remove-member':'groups:manage','groups:remove-donor':'groups:manage',
  'audit:list':'audit:read','diagnostics:run':'diagnostics:read','print:donors':'print:donors'
 };
-const registerHandle=ipcMain.handle.bind(ipcMain);ipcMain.on('auth:activity',()=>resetLock());
-ipcMain.handle=(channel,handler)=>registerHandle(channel,(event,...args)=>{const permission=PERMISSION_BY_CHANNEL[channel];if(permission){requireLogin();if(!currentUser.permissions?.includes('*')&&!currentUser.permissions?.includes(permission))throw Error('אין לך הרשאה לבצע פעולה זו');}return handler(event,...args)});
+const registerHandle=ipcMain.handle.bind(ipcMain);
+function trustedSender(event){return !!win&&!win.isDestroyed()&&event.sender===win.webContents&&event.senderFrame?.url===win.webContents.getURL()}
+ipcMain.on('auth:activity',event=>{if(trustedSender(event))resetLock()});
+ipcMain.handle=(channel,handler)=>registerHandle(channel,(event,...args)=>{if(!trustedSender(event))throw Error('מקור הבקשה אינו מורשה');const permission=PERMISSION_BY_CHANNEL[channel];if(permission){requireLogin();if(!currentUser.permissions?.includes('*')&&!currentUser.permissions?.includes(permission))throw Error('אין לך הרשאה לבצע פעולה זו');}return handler(event,...args)});
 
 ipcMain.handle('auth:setup-status',()=>store.db.prepare('SELECT COUNT(*) n FROM users').get().n===0);
 ipcMain.handle('auth:create-admin',async(_e,x)=>{const id=store.createFirstAdmin(x);await makeAutomaticBackup();return id});
