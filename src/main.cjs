@@ -10,7 +10,7 @@ const PERMISSION_BY_CHANNEL={
  'app:bootstrap':'dashboard:read','donor:list':'donors:read','donor:archive-list':'donors:read','donor:archive':'donors:write','donor:restore':'donors:write','donor:save':'donors:write','donor:donation':'donations:create','donor:history':'donors:read',
  'student:list':'students:read','student:save':'students:write','street:list':'streets:read','street:save':'streets:write','street:alias':'streets:write','year:create':'settings:write','route:list':'routes:read','route:save':'routes:write','route:streets':'routes:read','route:street-assign':'routes:write','route:street-remove':'routes:write','route:pairs':'routes:read','route:pair-save':'routes:write','route:pair-remove':'routes:write',
  'backup:create':'backup:create','data:export':'backup:export','data:import':'backup:restore','phone:list':'phone:read','phone:add':'phone:manage','phone:update':'phone:manage','phone:restore':'donors:write',
- 'users:add':'users:manage','groups:list':'groups:read','groups:create':'groups:manage','groups:add-member':'groups:manage','groups:add-donor':'groups:manage',
+ 'users:add':'users:manage','groups:list':'groups:read','groups:create':'groups:manage','groups:add-member':'groups:manage','groups:add-donor':'groups:manage','groups:members':'groups:read','groups:donors':'groups:read','groups:remove-member':'groups:manage','groups:remove-donor':'groups:manage',
  'audit:list':'audit:read','diagnostics:run':'diagnostics:read','print:donors':'print:donors'
 };
 const registerHandle=ipcMain.handle.bind(ipcMain);ipcMain.on('auth:activity',()=>resetLock());
@@ -53,6 +53,10 @@ ipcMain.handle('phone:list',(_e,y)=>{requireLogin();return store.listPhoneQueue(
 ipcMain.handle('phone:add',async(_e,x)=>{requireLogin();const r=store.enqueuePhone(x.donorId,x.year,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('phone:update',async(_e,x)=>{requireLogin();const r=store.updatePhoneQueue(x.id,x,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('phone:restore',async(_e,id)=>{requireLogin();const r=store.restorePhoneDonor(id,actor());await makeAutomaticBackup();return r});
+ipcMain.handle('groups:members',(_e,id)=>{requireLogin();return store.listGroupMembers(id)});
+ipcMain.handle('groups:donors',(_e,id)=>{requireLogin();return store.listGroupDonors(id)});
+ipcMain.handle('groups:remove-member',async(_e,x)=>{requireLogin();const r=store.removeGroupMember(x.groupId,x.studentId,actor());await makeAutomaticBackup();return r});
+ipcMain.handle('groups:remove-donor',async(_e,x)=>{requireLogin();const r=store.removeGroupDonor(x.groupId,x.donorId,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('groups:list',(_e,y)=>{requireLogin();return store.listGroups(y)});
 ipcMain.handle('groups:create',async(_e,x)=>{requireLogin();const r=store.createGroup(x,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('groups:add-member',async(_e,x)=>{requireLogin();const r=store.addGroupMember(x.groupId,x.studentId,actor());await makeAutomaticBackup();return r});
