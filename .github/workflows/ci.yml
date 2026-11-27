@@ -4,16 +4,49 @@ concurrency:
   group: windows-build-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  map-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare map data directory
+        run: mkdir -p maps
+      - name: Download OpenStreetMap Israel and Palestine regional extract
+        run: curl -L --fail --retry 3 https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf -o israel-and-palestine-latest.osm.pbf
+      - name: Build offline vector tiles
+        env:
+          JAVA_TOOL_OPTIONS: -Xmx6g
+        run: |
+          docker run --rm --memory=7g --memory-swap=7g \
+            -v "${{ github.workspace }}:/data" \
+            ghcr.io/onthegomap/planetiler:latest \
+            --osm-path=/data/israel-and-palestine-latest.osm.pbf \
+            --output=/data/maps/israel.mbtiles \
+            --maxzoom=16 --force
+      - name: Verify offline map database
+        run: |
+          test -s maps/israel.mbtiles
+          file maps/israel.mbtiles
+      - uses: actions/upload-artifact@v4
+        with:
+          name: israel-offline-map
+          path: maps/israel.mbtiles
+          if-no-files-found: error
+          retention-days: 3
   test:
+    needs: map-data
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: israel-offline-map
+          path: maps
       - uses: actions/setup-node@v4
-        with: {node-version: 22}
+        with:
+          node-version: 22
       - run: npm install
-      # Rebuild native SQLite binding for the Node.js runtime used by node --test.
       - run: npm rebuild better-sqlite3
-      - run: node --check src/main.cjs && node --check src/preload.cjs && node --check src/store.cjs && node --check src/security.cjs && node --check src/renderer.js
+      - run: node --check src/main.cjs && node --check src/preload.cjs && node --check src/store.cjs && node --check src/security.cjs && node --check src/renderer.js && node --check src/map-view.js
       - run: npm test
       - run: npm run build:win
       - uses: actions/upload-artifact@v4
