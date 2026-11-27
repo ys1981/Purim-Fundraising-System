@@ -2,7 +2,8 @@ const {app,BrowserWindow,ipcMain,dialog,safeStorage}=require('electron');const p
 let win,store,currentUser=null,lockTimer;const IDLE_MS=5*60*1000;
 function resetLock(){clearTimeout(lockTimer);if(currentUser)lockTimer=setTimeout(()=>{currentUser=null;win?.webContents.send('auth:locked')},IDLE_MS)}
 function createWindow(){win=new BrowserWindow({width:1500,height:950,minWidth:1100,minHeight:720,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});win.loadFile(path.join(__dirname,'index.html'));win.webContents.on('before-input-event',()=>resetLock())}
-async function makeAutomaticBackup(){const dir=path.join(app.getPath('userData'),'backups');await fs.mkdir(dir,{recursive:true});const file=path.join(dir,'automatic-latest.json');const temp=file+'.tmp';await fs.writeFile(temp,JSON.stringify(store.exportData()),{mode:0o600});await fs.rename(temp,file);return file}\napp.whenReady().then(async()=>{const db=openDatabase(app.getPath('userData'));store=createStore(db);await makeAutomaticBackup();createWindow();app.on('activate',()=>{if(!BrowserWindow.getAllWindows().length)createWindow()})});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
+async function makeAutomaticBackup(){const dir=path.join(app.getPath('userData'),'backups');await fs.mkdir(dir,{recursive:true});const file=path.join(dir,'automatic-latest.json');const temp=file+'.tmp';await fs.writeFile(temp,JSON.stringify(store.exportData()),{mode:0o600});await fs.rename(temp,file);return file}
+app.whenReady().then(async()=>{const db=openDatabase(app.getPath('userData'));store=createStore(db);await makeAutomaticBackup();createWindow();app.on('activate',()=>{if(!BrowserWindow.getAllWindows().length)createWindow()})});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 function actor(){return currentUser?.name||'מנהל מקומי'}function requireLogin(){if(!currentUser)throw Error('יש להתחבר מחדש')}
 
 const PERMISSION_BY_CHANNEL={
@@ -15,7 +16,10 @@ const PERMISSION_BY_CHANNEL={
 const registerHandle=ipcMain.handle.bind(ipcMain);
 ipcMain.handle=(channel,handler)=>registerHandle(channel,(event,...args)=>{const permission=PERMISSION_BY_CHANNEL[channel];if(permission){requireLogin();if(!currentUser.permissions?.includes('*')&&!currentUser.permissions?.includes(permission))throw Error('אין לך הרשאה לבצע פעולה זו');}return handler(event,...args)});
 
-ipcMain.handle('auth:setup-status',()=>store.db.prepare('SELECT COUNT(*) n FROM users').get().n===0);\nipcMain.handle('auth:create-admin',async(_e,x)=>{const id=store.createFirstAdmin(x);await makeAutomaticBackup();return id});\nipcMain.handle('users:add',async(_e,x)=>{requireLogin();const r=store.addUser(x,actor());await makeAutomaticBackup();return r});\nipcMain.handle('auth:list',()=>store.db.prepare('SELECT id,display_name,role FROM users WHERE active=1 ORDER BY display_name').all());
+ipcMain.handle('auth:setup-status',()=>store.db.prepare('SELECT COUNT(*) n FROM users').get().n===0);
+ipcMain.handle('auth:create-admin',async(_e,x)=>{const id=store.createFirstAdmin(x);await makeAutomaticBackup();return id});
+ipcMain.handle('users:add',async(_e,x)=>{requireLogin();const r=store.addUser(x,actor());await makeAutomaticBackup();return r});
+ipcMain.handle('auth:list',()=>store.db.prepare('SELECT id,display_name,role FROM users WHERE active=1 ORDER BY display_name').all());
 ipcMain.handle('auth:login',(_e,x)=>{currentUser=store.login(x.id,x.code);resetLock();return currentUser});
 ipcMain.handle('auth:logout',()=>{currentUser=null;clearTimeout(lockTimer);return true});
 ipcMain.handle('app:bootstrap',()=>{requireLogin();return {user:currentUser,summary:store.summary(new Date().getFullYear()),donors:store.listDonors(),students:store.listStudents(),classes:store.db.prepare('SELECT * FROM classes ORDER BY sort_order').all(),years:store.db.prepare('SELECT * FROM years ORDER BY year DESC').all(),audit:store.listAudit().slice(0,30)}});
