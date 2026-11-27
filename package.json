@@ -10,7 +10,8 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
-    "better-sqlite3": "^12.4.1"
+    "better-sqlite3": "^12.4.1",
+    "exceljs": "^4.4.0"
   },
   "devDependencies": {
     "electron": "^39.2.0",
