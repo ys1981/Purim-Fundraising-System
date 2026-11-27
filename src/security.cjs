@@ -2,6 +2,6 @@ const crypto=require('node:crypto');
 const ITERATIONS=210000;
 function hashCode(code){const salt=crypto.randomBytes(16);const hash=crypto.pbkdf2Sync(String(code),salt,ITERATIONS,32,'sha256');return 'pbkdf2$'+ITERATIONS+'$'+salt.toString('hex')+'$'+hash.toString('hex')}
 function verifyCode(code,encoded){try{const [kind,iter,saltHex,hashHex]=encoded.split('$');if(kind!=='pbkdf2')return false;const actual=crypto.pbkdf2Sync(String(code),Buffer.from(saltHex,'hex'),Number(iter),32,'sha256');const expected=Buffer.from(hashHex,'hex');return actual.length===expected.length&&crypto.timingSafeEqual(actual,expected)}catch{return false}}
-const ROLE_PRESETS={admin:['*'],viewer:['dashboard:read','donors:read','reports:read','audit:read','diagnostics:read'],frontdesk:['frontdesk:read','donations:create'],collector:['routes:read','donations:create']};
+const ROLE_PRESETS={admin:['*'],viewer:['dashboard:read','donors:read','reports:read','audit:read','diagnostics:read'],frontdesk:['dashboard:read','frontdesk:read','donations:create'],collector:['dashboard:read','routes:read','donations:create']};
 function allowed(user,permission){if(!user||!user.active)return false;if(user.allowed_from&&Date.now()<Date.parse(user.allowed_from))return false;if(user.allowed_until&&Date.now()>Date.parse(user.allowed_until))return false;const p=JSON.parse(user.permissions_json||'{}').permissions||ROLE_PRESETS[user.role]||[];return p.includes('*')||p.includes(permission)}
 module.exports={hashCode,verifyCode,allowed,ROLE_PRESETS};
