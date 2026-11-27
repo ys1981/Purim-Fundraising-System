@@ -14,3 +14,9 @@ jobs:
       - run: node --check src/main.cjs && node --check src/preload.cjs && node --check src/store.cjs && node --check src/security.cjs && node --check src/renderer.js
       - run: npm test
       - run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Purim-Fundraising-System-Windows-Installer
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
