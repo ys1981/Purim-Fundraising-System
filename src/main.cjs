@@ -20,7 +20,7 @@ app.whenReady().then(async()=>{
    if(!Number.isInteger(z)||z<0||z>16||x<0||y<0||x>=2**z||y>=2**z)return new Response('Not found',{status:404});
    const row=mapDb.prepare('SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?').get(z,x,(2**z)-1-y);
    if(!row)return new Response(null,{status:404});
-   return new Response(row.tile_data,{headers:{'Content-Type':'application/x-protobuf','Cache-Control':'public, max-age=86400'}});
+   const bytes=Buffer.from(row.tile_data),headers={'Content-Type':'application/x-protobuf','Cache-Control':'public, max-age=86400'};if(bytes[0]===0x1f&&bytes[1]===0x8b)headers['Content-Encoding']='gzip';return new Response(bytes,{headers});
   }catch{return new Response('Tile read error',{status:500})}
  });
  const db=openDatabase(app.getPath('userData'));store=createStore(db);backupTarget=await readBackupTarget();backupTargetStatus={configured:!!backupTarget,syncedAt:null,error:null};await makeAutomaticBackup();createWindow();app.on('activate',()=>{if(!BrowserWindow.getAllWindows().length)createWindow()})});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
