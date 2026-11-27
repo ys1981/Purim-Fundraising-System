@@ -106,3 +106,23 @@ test('street directory stores areas and aliases without alias collisions',t=>{
  assert.throws(()=>store.saveStreet({city:'בני ברק',name:'רבי עקיבא',area:'מרכז'}),/כבר קיים/);
  assert.equal(db.prepare('SELECT COUNT(*) n FROM streets').get().n,2);
 });
+
+test('routes can own street ranges and unique student pairs',t=>{
+ const {store,db}=fixture(t);
+ const yearId=store.createYear(2029);
+ const routeId=db.prepare('INSERT INTO routes(year_id,route_code,name) VALUES(?,?,?)').run(yearId,'R1','מסלול מרכז').lastInsertRowid;
+ const street=store.saveStreet({city:'בני ברק',name:'רבי עקיבא',area:'מרכז'});
+ const one=store.saveStudent({firstName:'משה',lastName:'כהן'});
+ const two=store.saveStudent({firstName:'דוד',lastName:'לוי'});
+ const three=store.saveStudent({firstName:'יעקב',lastName:'ישראלי'});
+ store.assignRouteStreet({routeId,streetId:street.id,lowNumber:2,highNumber:80,parity:'even'});
+ assert.equal(store.listRouteStreets(routeId).length,1);
+ assert.equal(store.listRouteStreets(routeId)[0].low_number,2);
+ store.saveRoutePair({routeId,studentA:one,studentB:two});
+ assert.equal(store.listRoutePairs(routeId).length,1);
+ assert.throws(()=>store.saveRoutePair({routeId,studentA:two,studentB:three}),/כבר משובץ/);
+ store.saveRoutePair({routeId,studentA:three});
+ assert.equal(store.listRoutePairs(routeId).length,2);
+ assert.equal(store.removeRouteStreet(routeId,street.id),true);
+ assert.equal(store.listRouteStreets(routeId).length,0);
+});
