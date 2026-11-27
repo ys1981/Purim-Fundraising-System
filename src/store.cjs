@@ -201,6 +201,20 @@ function createStore(db){
    return {donors:donorResult.count,students:studentResult.count,donations:donationResult.count};
   })();
  }
+ function addVisit(x,actor='מנהל'){
+  const donorId=Number(x?.donorId),year=Number(x?.year),visitDate=String(x?.visitDate||''),nextVisitDate=x?.nextVisitDate?String(x.nextVisitDate):null,outcome=String(x?.outcome||'visited');
+  if(!Number.isSafeInteger(donorId)||donorId<=0)throw Error('יש לבחור תורם תקין');
+  if(!Number.isInteger(year)||year<2000||year>2200)throw Error('שנת הביקור אינה תקינה');
+  const validDate=value=>{if(!value)return false;const d=new Date(value+'T00:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===value};
+  if(!validDate(visitDate))throw Error('תאריך הביקור אינו תקין');
+  if(nextVisitDate&&!validDate(nextVisitDate))throw Error('תאריך הביקור הבא אינו תקין');
+  if(nextVisitDate&&nextVisitDate<visitDate)throw Error('תאריך הביקור הבא לא יכול להיות לפני הביקור הנוכחי');
+  if(!['visited','not_home','follow_up','declined','pledged'].includes(outcome))throw Error('תוצאת הביקור אינה תקינה');
+  const donor=db.prepare("SELECT id FROM donors WHERE id=? AND status='active'").get(donorId);if(!donor)throw Error('ניתן לתעד ביקור רק לתורם פעיל');
+  const stamp=now(),result=db.prepare('INSERT INTO donor_visits(donor_id,year,visit_date,outcome,next_visit_date,notes,visited_by,created_at) VALUES(?,?,?,?,?,?,?,?)').run(donorId,year,visitDate,outcome,nextVisitDate,String(x.notes||''),actor,stamp);
+  const id=Number(result.lastInsertRowid);audit(actor,'תיעוד ביקור תורם','donor_visit',id,null,{donorId,year,visitDate,outcome,nextVisitDate,notes:x.notes||''});return id;
+ }
+ function listVisits(year){return db.prepare('SELECT v.*,d.title,d.first_name,d.last_name,d.city,d.street,d.building,d.phone FROM donor_visits v JOIN donors d ON d.id=v.donor_id WHERE v.year=? ORDER BY v.visit_date DESC,v.id DESC').all(Number(year))}
  function listPhoneQueue(year){return db.prepare("SELECT q.*,d.title,d.first_name,d.last_name,d.city,d.street,d.building,d.phone FROM phone_queue q JOIN donors d ON d.id=q.donor_id WHERE q.year=? ORDER BY CASE q.status WHEN 'pending' THEN 0 WHEN 'call_back' THEN 1 ELSE 2 END,q.id").all(Number(year))}
  function enqueuePhone(donorId,year,actor='מנהל'){return db.transaction(()=>{const existing=db.prepare('SELECT id FROM phone_queue WHERE donor_id=? AND year=? AND status IN (\'pending\',\'call_back\')').get(donorId,Number(year));if(existing)throw Error('התורם כבר נמצא ברשימת הטלפונים לשנה זו');const d=db.prepare('SELECT * FROM donors WHERE id=?').get(donorId);if(!d)throw Error('התורם לא נמצא');db.prepare("UPDATE donors SET status='phone',updated_at=? WHERE id=?").run(now(),donorId);const r=db.prepare("INSERT INTO phone_queue(donor_id,year,status) VALUES(?,?,'pending')").run(donorId,Number(year));audit(actor,'העברה להתרמה טלפונית','donor',donorId,d,{status:'phone',year});return r.lastInsertRowid})()}
  function updatePhoneQueue(id,x,actor='מנהל'){const before=db.prepare('SELECT * FROM phone_queue WHERE id=?').get(id);if(!before)throw Error('רשומת שיחה לא נמצאה');const statuses=['pending','donated','call_back','no_answer','not_interested'];if(!statuses.includes(x.status))throw Error('סטטוס שיחה לא תקין');db.prepare('UPDATE phone_queue SET status=?,caller=?,next_call_at=?,notes=? WHERE id=?').run(x.status,x.caller||'',x.nextCallAt||null,x.notes||'',id);audit(actor,'עדכון שיחת התרמה','phone_queue',id,before,x);return true}
@@ -219,6 +233,6 @@ function createStore(db){
  function removeGroupDonor(groupId,donorId,actor='מנהל'){const r=db.prepare('DELETE FROM group_donors WHERE group_id=? AND donor_id=?').run(Number(groupId),Number(donorId));if(r.changes)audit(actor,'הסרת תורם מקבוצה','group',groupId,null,{donorId});return r.changes>0}
  function addGroupMember(groupId,studentId,actor='מנהל'){db.prepare('INSERT OR IGNORE INTO group_members(group_id,student_id) VALUES(?,?)').run(groupId,studentId);audit(actor,'שיוך בחור לקבוצה','group',groupId,null,{studentId});return true}
  function addGroupDonor(groupId,donorId,actor='מנהל'){db.prepare('INSERT OR IGNORE INTO group_donors(group_id,donor_id) VALUES(?,?)').run(groupId,donorId);audit(actor,'שיוך תורם לקבוצה','group',groupId,null,{donorId});return true}
- return {db,audit,createFirstAdmin,addCommitment,listCommitments,listPayments,getReceipt,addPayment,importDonors,importStudents,importDonations,importWorkbookData,findDonorByCode,listDonors,listArchivedDonors,archiveDonor,restoreDonor,saveDonor,addDonation,listStudents,saveStudent,listStreets,saveStreet,addStreetAlias,listRouteStreets,assignRouteStreet,removeRouteStreet,listRoutePairs,saveRoutePair,removeRoutePair,createYear,listAudit,summary,campaignReport,addUser,login,exportData,importData,listPhoneQueue,enqueuePhone,updatePhoneQueue,restorePhoneDonor,listGroups,createGroup,listGroupMembers,listGroupDonors,addGroupMember,addGroupDonor,removeGroupMember,removeGroupDonor};
+ return {db,audit,createFirstAdmin,addVisit,listVisits,addCommitment,listCommitments,listPayments,getReceipt,addPayment,importDonors,importStudents,importDonations,importWorkbookData,findDonorByCode,listDonors,listArchivedDonors,archiveDonor,restoreDonor,saveDonor,addDonation,listStudents,saveStudent,listStreets,saveStreet,addStreetAlias,listRouteStreets,assignRouteStreet,removeRouteStreet,listRoutePairs,saveRoutePair,removeRoutePair,createYear,listAudit,summary,campaignReport,addUser,login,exportData,importData,listPhoneQueue,enqueuePhone,updatePhoneQueue,restorePhoneDonor,listGroups,createGroup,listGroupMembers,listGroupDonors,addGroupMember,addGroupDonor,removeGroupMember,removeGroupDonor};
 }
 module.exports={createStore};
