@@ -267,3 +267,20 @@ test('students cannot be assigned to two routes in the same event but can serve 
  assert.throws(()=>store.saveRoutePair({routeId:b,studentA:student}),/מסלול אחר באותו מועד/);
  assert.doesNotThrow(()=>store.saveRoutePair({routeId:c,studentA:student}));
 });
+
+test('offline campaign report summarizes totals, daily activity and data quality',t=>{
+ const {store}=fixture(t);
+ const a=store.saveDonor({firstName:'אברהם',lastName:'כהן',city:'ירושלים',street:'יפו',building:'10'});
+ const b=store.saveDonor({firstName:'יצחק',lastName:'לוי',city:'ירושלים',street:'יפו',building:'10'});
+ store.addDonation({donorId:a.id,year:2027,amount:180,occasion:'day14'});
+ store.addDonation({donorId:b.id,year:2027,amount:120,occasion:'day15'});
+ const report=store.campaignReport(2027);
+ assert.equal(report.totals.donation_count,2);
+ assert.equal(report.totals.total_amount,300);
+ assert.equal(report.totals.donors_count,2);
+ assert.equal(report.topDonors.length,2);
+ assert.equal(report.quality.activeDonors,2);
+ assert.equal(report.quality.missingPhone,2);
+ assert.equal(report.quality.duplicateAddresses,1);
+ assert.equal(report.daily.reduce((sum,row)=>sum+row.amount,0),300);
+});
