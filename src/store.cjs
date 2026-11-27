@@ -46,9 +46,10 @@ function createStore(db){
     return row;
    });
   }
+  const deleteOrder=['group_members','group_donors','route_pairs','route_streets','street_aliases','phone_queue','tasks','donations','parents','routes','purim_groups','collection_events','students','donors','streets','classes','years','users','audit','access_log','print_templates','snapshots','map_features'];
   return db.transaction(()=>{
    const backup=exportData();
-   for(const table of insertOrder)db.prepare('DELETE FROM "'+table+'"').run();
+   for(const table of deleteOrder)db.prepare('DELETE FROM "'+table+'"').run();
    for(const table of insertOrder){
     for(const row of preparedRows[table]){
      const keys=Object.keys(row);
