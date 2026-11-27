@@ -42,6 +42,12 @@ test('campaign groups can be created and linked to students and donors',t=>{
  const [group]=store.listGroups(yearId);
  assert.equal(group.member_count,1);
  assert.equal(group.donor_count,1);
+ assert.equal(store.listGroupMembers(groupId)[0].id,studentId);
+ assert.equal(store.listGroupDonors(groupId)[0].id,donor.id);
+ assert.equal(store.removeGroupMember(groupId,studentId),true);
+ assert.equal(store.removeGroupDonor(groupId,donor.id),true);
+ assert.equal(store.listGroupMembers(groupId).length,0);
+ assert.equal(store.listGroupDonors(groupId).length,0);
 });
 
 test('full JSON backup restores linked records',t=>{
