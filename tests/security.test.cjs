@@ -1,0 +1,4 @@
+const test=require('node:test');const assert=require('node:assert/strict');const {hashCode,verifyCode,allowed}=require('../src/security.cjs');
+test('PBKDF2 verifies correct code and rejects wrong code',()=>{const h=hashCode('1234');assert.equal(verifyCode('1234',h),true);assert.equal(verifyCode('9999',h),false)});
+test('role permissions are bounded',()=>{assert.equal(allowed({active:1,role:'viewer',permissions_json:'{}'},'donors:read'),true);assert.equal(allowed({active:1,role:'viewer',permissions_json:'{}'},'donors:delete'),false)});
+test('expired user access is denied',()=>{assert.equal(allowed({active:1,role:'admin',permissions_json:'{}',allowed_until:'2000-01-01'},'anything'),false)});

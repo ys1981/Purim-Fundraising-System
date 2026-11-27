@@ -1,0 +1,40 @@
+const Database=require('better-sqlite3');
+const path=require('node:path'); const fs=require('node:fs');
+function openDatabase(userData){
+ const dir=path.join(userData,'data'); fs.mkdirSync(dir,{recursive:true});
+ const db=new Database(path.join(dir,'purim.sqlite'));
+ db.pragma('journal_mode = WAL'); db.pragma('foreign_keys = ON'); db.pragma('busy_timeout = 5000');
+ db.exec(`
+ CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS donors(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT DEFAULT 'הרב',first_name TEXT NOT NULL,last_name TEXT NOT NULL,city TEXT NOT NULL,street TEXT NOT NULL,building TEXT DEFAULT '',entrance TEXT DEFAULT '',apartment TEXT DEFAULT '',floor TEXT DEFAULT '',area TEXT DEFAULT '',group_name TEXT DEFAULT '',print_notes TEXT DEFAULT '',private_notes TEXT DEFAULT '',phone TEXT DEFAULT '',email TEXT DEFAULT '',collection_time TEXT DEFAULT 'day14',status TEXT DEFAULT 'active',archive_until_year INTEGER,archive_reason TEXT,do_not_contact INTEGER DEFAULT 0,latitude REAL,longitude REAL,location_status TEXT DEFAULT 'unverified',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS donations(id INTEGER PRIMARY KEY AUTOINCREMENT,donor_id INTEGER NOT NULL REFERENCES donors(id) ON DELETE CASCADE,year INTEGER NOT NULL,occasion TEXT DEFAULT 'day14',amount REAL NOT NULL CHECK(amount>=0),notes TEXT DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS idx_donors_address ON donors(city,street,building); CREATE INDEX IF NOT EXISTS idx_donations_year ON donations(year,donor_id);
+ CREATE TABLE IF NOT EXISTS classes(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE NOT NULL,sort_order INTEGER NOT NULL DEFAULT 0);
+ CREATE TABLE IF NOT EXISTS students(id INTEGER PRIMARY KEY AUTOINCREMENT,first_name TEXT NOT NULL,last_name TEXT NOT NULL,class_id INTEGER REFERENCES classes(id),phone TEXT DEFAULT '',father_phone TEXT DEFAULT '',notes TEXT DEFAULT '',custom_json TEXT DEFAULT '{}',status TEXT DEFAULT 'active',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS parents(student_id INTEGER PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE,donor_id INTEGER REFERENCES donors(id) ON DELETE SET NULL,relationship TEXT DEFAULT 'הורה לבחור');
+ CREATE TABLE IF NOT EXISTS years(id INTEGER PRIMARY KEY AUTOINCREMENT,year INTEGER UNIQUE NOT NULL,status TEXT DEFAULT 'planning',created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS collection_events(id INTEGER PRIMARY KEY AUTOINCREMENT,year_id INTEGER NOT NULL REFERENCES years(id),name TEXT NOT NULL,event_date TEXT,kind TEXT NOT NULL,sort_order INTEGER DEFAULT 0);
+ CREATE TABLE IF NOT EXISTS streets(id INTEGER PRIMARY KEY AUTOINCREMENT,city TEXT NOT NULL,name TEXT NOT NULL,area TEXT DEFAULT '',group_name TEXT DEFAULT '',low_number INTEGER,high_number INTEGER,parity TEXT DEFAULT 'all',UNIQUE(city,name,area));
+ CREATE TABLE IF NOT EXISTS street_aliases(id INTEGER PRIMARY KEY AUTOINCREMENT,street_id INTEGER NOT NULL REFERENCES streets(id) ON DELETE CASCADE,alias TEXT NOT NULL UNIQUE);
+ CREATE TABLE IF NOT EXISTS routes(id INTEGER PRIMARY KEY AUTOINCREMENT,year_id INTEGER NOT NULL REFERENCES years(id),event_id INTEGER REFERENCES collection_events(id),route_code TEXT NOT NULL,name TEXT NOT NULL,area TEXT DEFAULT '',is_reserve INTEGER DEFAULT 0,locked INTEGER DEFAULT 0,notes TEXT DEFAULT '');
+ CREATE TABLE IF NOT EXISTS route_streets(route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE CASCADE,street_id INTEGER NOT NULL REFERENCES streets(id),low_number INTEGER,high_number INTEGER,parity TEXT DEFAULT 'all',PRIMARY KEY(route_id,street_id));
+ CREATE TABLE IF NOT EXISTS route_pairs(id INTEGER PRIMARY KEY AUTOINCREMENT,route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE CASCADE,student_a INTEGER REFERENCES students(id),student_b INTEGER REFERENCES students(id),reserve_used INTEGER DEFAULT 0);
+ CREATE TABLE IF NOT EXISTS purim_groups(id INTEGER PRIMARY KEY AUTOINCREMENT,year_id INTEGER NOT NULL REFERENCES years(id),name TEXT NOT NULL,city TEXT NOT NULL,area TEXT NOT NULL,event_id INTEGER REFERENCES collection_events(id),notes TEXT DEFAULT '');
+ CREATE TABLE IF NOT EXISTS group_members(group_id INTEGER NOT NULL REFERENCES purim_groups(id) ON DELETE CASCADE,student_id INTEGER NOT NULL REFERENCES students(id),PRIMARY KEY(group_id,student_id));
+ CREATE TABLE IF NOT EXISTS group_donors(group_id INTEGER NOT NULL REFERENCES purim_groups(id) ON DELETE CASCADE,donor_id INTEGER NOT NULL REFERENCES donors(id),sort_order INTEGER DEFAULT 0,PRIMARY KEY(group_id,donor_id));
+ CREATE TABLE IF NOT EXISTS phone_queue(id INTEGER PRIMARY KEY AUTOINCREMENT,donor_id INTEGER NOT NULL REFERENCES donors(id),year INTEGER NOT NULL,caller TEXT DEFAULT '',status TEXT DEFAULT 'pending',next_call_at TEXT,notes TEXT DEFAULT '');
+ CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY AUTOINCREMENT,donor_id INTEGER REFERENCES donors(id),title TEXT NOT NULL,details TEXT DEFAULT '',status TEXT DEFAULT 'open',created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE NOT NULL,display_name TEXT NOT NULL,password_hash TEXT NOT NULL,role TEXT DEFAULT 'custom',permissions_json TEXT DEFAULT '{}',active INTEGER DEFAULT 1,allowed_from TEXT,allowed_until TEXT);
+ CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,action TEXT NOT NULL,entity TEXT,entity_id TEXT,before_json TEXT,after_json TEXT,created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS access_log(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,action TEXT NOT NULL,entity_id TEXT,created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS print_templates(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,year INTEGER,kind TEXT NOT NULL,template_json TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,year INTEGER NOT NULL,label TEXT NOT NULL,data_json TEXT NOT NULL,created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS map_features(id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,name TEXT NOT NULL,geojson TEXT NOT NULL,source TEXT DEFAULT 'user');
+ `);
+ const now=new Date().toISOString();
+ const insert=db.prepare('INSERT OR IGNORE INTO classes(name,sort_order) VALUES(?,?)');
+ ['שיעור א','שיעור ב','שיעור ג','קיבוץ'].forEach((n,i)=>insert.run(n,i));
+ db.prepare("INSERT OR IGNORE INTO meta(key,value) VALUES('schema_version','1')").run();
+ return db;
+}
+module.exports={openDatabase};
