@@ -57,3 +57,13 @@ test('full JSON backup restores linked records',t=>{
  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM donations').get().n,1);
  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM collection_events WHERE year_id=?').get(yearId).n,3);
 });
+
+test('front desk and collector role presets allow initial login',t=>{
+ const {store}=fixture(t);
+ for(const role of ['frontdesk','collector']){
+  const username='user_'+role;
+  const id=store.addUser({username,displayName:role,code:'1234',role});
+  const user=store.login(id,'1234');
+  assert.ok(user.permissions.includes('dashboard:read'));
+ }
+});
