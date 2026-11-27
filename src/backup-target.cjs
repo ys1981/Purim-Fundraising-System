@@ -7,7 +7,6 @@ async function copyBackupAtomically(sourceFile,targetDirectory){
  if(typeof targetDirectory!=='string'||!targetDirectory)throw new Error('תיקיית הגיבוי ברשת לא הוגדרה');
  const info=await fs.stat(targetDirectory);
  if(!info.isDirectory())throw new Error('יעד הגיבוי אינו תיקייה');
- await fs.access(targetDirectory,fs.constants.W_OK);
  const targetFile=path.join(targetDirectory,'Purim-Live-Backup.json');
  const tempFile=targetFile+'.'+process.pid+'.'+crypto.randomUUID()+'.tmp';
  try{
