@@ -10,6 +10,7 @@
    {id:'landuse',type:'fill',source:'israel','source-layer':'landuse',paint:{'fill-color':'#e3e9d8','fill-opacity':0.55}},
    {id:'water',type:'fill',source:'israel','source-layer':'water',paint:{'fill-color':'#b9dce9'}},
    {id:'building',type:'fill',source:'israel','source-layer':'building',minzoom:13,paint:{'fill-color':'#d6cfc2','fill-outline-color':'#b7ad9e','fill-opacity':0.9}},
+   {id:'house-number-points',type:'circle',source:'israel','source-layer':'housenumber',minzoom:15,paint:{'circle-radius':2,'circle-color':'#8b6546','circle-stroke-color':'#fff','circle-stroke-width':1}},
    {id:'roads-casing',type:'line',source:'israel','source-layer':'transportation',paint:{'line-color':'#fff','line-width':['interpolate',['linear'],['zoom'],5,0.4,14,5]}},
    {id:'roads',type:'line',source:'israel','source-layer':'transportation',paint:{'line-color':'#e4ad72','line-width':['interpolate',['linear'],['zoom'],5,0.2,14,2.5]}},
 
