@@ -79,3 +79,18 @@ test('front desk and collector role presets allow initial login',t=>{
   assert.ok(user.permissions.includes('dashboard:read'));
  }
 });
+
+test('donors can be archived with a reason and restored without losing history',t=>{
+ const {store,db}=fixture(t);
+ const donor=store.saveDonor({firstName:'יצחק',lastName:'כהן',city:'גבעת שמואל',street:'הזיתים'});
+ store.addDonation({donorId:donor.id,year:2027,amount:360});
+ store.archiveDonor(donor.id,'עבר דירה',2028);
+ assert.equal(store.listDonors().length,0);
+ assert.equal(store.listArchivedDonors().length,1);
+ assert.equal(store.listArchivedDonors()[0].archive_reason,'עבר דירה');
+ assert.equal(store.listArchivedDonors()[0].archive_until_year,2028);
+ store.restoreDonor(donor.id);
+ assert.equal(store.listDonors().length,1);
+ assert.equal(store.listDonors()[0].total_donations,360);
+ assert.equal(db.prepare('SELECT archive_reason FROM donors WHERE id=?').get(donor.id).archive_reason,null);
+});
