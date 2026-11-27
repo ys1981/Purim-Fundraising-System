@@ -228,3 +228,42 @@ test('workbook import is atomic across donors, students and donations',t=>{
  assert.throws(()=>store.importWorkbookData({donors:[{firstName:'רחל',lastName:'כהן',city:'בני ברק',street:'חזון איש'}],students:[{firstName:'ללא',lastName:'שיעור',className:'שיעור לא קיים'}]}),/השיעור לא קיים/);
  assert.equal(db.prepare('SELECT COUNT(*) n FROM donors').get().n,1,'donor insert must roll back if a later sheet fails');
 });
+
+test('donations cannot be recorded for archived or do-not-contact donors',t=>{
+ const {store,db}=fixture(t);
+ const archived=store.saveDonor({firstName:'ארכיון',lastName:'בדיקה',city:'ירושלים',street:'יפו'});
+ store.archiveDonor(archived.id,'בדיקת חסימה');
+ assert.throws(()=>store.addDonation({donorId:archived.id,year:2027,amount:10}),/תורם שאינו פעיל/);
+ const blocked=store.saveDonor({firstName:'ללא',lastName:'פנייה',city:'ירושלים',street:'יפו 2',doNotContact:1});
+ assert.throws(()=>store.addDonation({donorId:blocked.id,year:2027,amount:10}),/ללא פנייה/);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM donations').get().n,0);
+});
+
+test('street ranges cannot overlap between routes in the same collection event',t=>{
+ const {store,db}=fixture(t);
+ const yearId=store.createYear(2030);
+ const eventId=db.prepare('SELECT id FROM collection_events WHERE year_id=? ORDER BY id LIMIT 1').get(yearId).id;
+ const a=db.prepare('INSERT INTO routes(year_id,event_id,route_code,name) VALUES(?,?,?,?)').run(yearId,eventId,'A','א').lastInsertRowid;
+ const b=db.prepare('INSERT INTO routes(year_id,event_id,route_code,name) VALUES(?,?,?,?)').run(yearId,eventId,'B','ב').lastInsertRowid;
+ const c=db.prepare('INSERT INTO routes(year_id,event_id,route_code,name) VALUES(?,?,?,?)').run(yearId,eventId,'C','ג').lastInsertRowid;
+ const otherEvent=db.prepare('SELECT id FROM collection_events WHERE year_id=? AND id<>? ORDER BY id LIMIT 1').get(yearId,eventId).id;
+ const d=db.prepare('INSERT INTO routes(year_id,event_id,route_code,name) VALUES(?,?,?,?)').run(yearId,otherEvent,'D','ד').lastInsertRowid;
+ const street=store.saveStreet({city:'ירושלים',name:'יפו',area:'מרכז'});
+ store.assignRouteStreet({routeId:a,streetId:street.id,lowNumber:1,highNumber:99,parity:'odd'});
+ assert.throws(()=>store.assignRouteStreet({routeId:b,streetId:street.id,lowNumber:51,highNumber:120,parity:'odd'}),/חופף למסלול A/);
+ assert.doesNotThrow(()=>store.assignRouteStreet({routeId:c,streetId:street.id,lowNumber:2,highNumber:100,parity:'even'}));
+ assert.doesNotThrow(()=>store.assignRouteStreet({routeId:d,streetId:street.id,lowNumber:1,highNumber:99,parity:'odd'}));
+});
+
+test('students cannot be assigned to two routes in the same event but can serve another event',t=>{
+ const {store,db}=fixture(t);
+ const yearId=store.createYear(2031);
+ const events=db.prepare('SELECT id FROM collection_events WHERE year_id=? ORDER BY id').all(yearId);
+ const a=db.prepare('INSERT INTO routes(year_id,event_id,route_code,name) VALUES(?,?,?,?)').run(yearId,events[0].id,'A','א').lastInsertRowid;
+ const b=db.prepare('INSERT INTO routes(year_id,event_id,route_code,name) VALUES(?,?,?,?)').run(yearId,events[0].id,'B','ב').lastInsertRowid;
+ const c=db.prepare('INSERT INTO routes(year_id,event_id,route_code,name) VALUES(?,?,?,?)').run(yearId,events[1].id,'C','ג').lastInsertRowid;
+ const student=store.saveStudent({firstName:'משה',lastName:'כהן'});
+ store.saveRoutePair({routeId:a,studentA:student});
+ assert.throws(()=>store.saveRoutePair({routeId:b,studentA:student}),/מסלול אחר באותו מועד/);
+ assert.doesNotThrow(()=>store.saveRoutePair({routeId:c,studentA:student}));
+});
