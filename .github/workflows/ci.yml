@@ -10,16 +10,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepare map data directory
         run: mkdir -p maps
-      - name: Download prebuilt Israel offline vector map (with verified cache fallback)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if ! curl -fL --connect-timeout 20 --max-time 600 --retry 3 --retry-all-errors --retry-delay 5 https://download.geofabrik.de/asia/israel-and-palestine-shortbread-1.0.mbtiles -o maps/israel.mbtiles; then
-            echo "Geofabrik is unavailable; reusing the previously verified map artifact."
-            rm -f maps/israel.mbtiles
-            gh run download 45937814655 --repo "${{ github.repository }}" --name israel-offline-map --dir maps
-          fi
-          test -s maps/israel.mbtiles
+      - name: Download previously verified offline map artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: israel-offline-map
+          run-id: 45937814655
+          github-token: ${{ github.token }}
+          path: maps
       - name: Verify map package
         run: |
           test -s maps/israel.mbtiles
@@ -32,7 +29,7 @@ jobs:
           name: israel-offline-map
           path: maps/israel.mbtiles
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 90
   test:
     needs: map-data
     runs-on: windows-latest
