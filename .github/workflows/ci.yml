@@ -46,6 +46,8 @@ jobs:
       - run: npm rebuild better-sqlite3
       - run: node --check src/main.cjs && node --check src/preload.cjs && node --check src/store.cjs && node --check src/security.cjs && node --check src/renderer.js && node --check src/map-view.js
       - run: npm test
+      - name: Rebuild native modules for the packaged Electron runtime
+        run: npx electron-builder install-app-deps
       - run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
