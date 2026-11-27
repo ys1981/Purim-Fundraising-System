@@ -195,3 +195,24 @@ test('CSV donor import rolls back all rows when a database duplicate is found',t
  assert.equal(store.listDonors().length,1);
  assert.equal(store.listDonors()[0].first_name,'דוד');
 });
+
+test('CSV student import validates classes and atomically rejects duplicates',t=>{
+ const {store,db}=fixture(t);
+ const cls=db.prepare('SELECT id,name FROM classes ORDER BY sort_order LIMIT 1').get();
+ const result=store.importStudents([{firstName:'משה',lastName:'כהן',className:cls.name,phone:'0501' }]);
+ assert.equal(result.count,1);
+ assert.equal(store.listStudents()[0].class_name,cls.name);
+ assert.throws(()=>store.importStudents([{firstName:'דוד',lastName:'לוי',className:cls.name},{firstName:'משה',lastName:'כהן',className:cls.name}]),/כבר קיים במערכת/);
+ assert.equal(store.listStudents().length,1);
+ assert.throws(()=>store.importStudents([{firstName:'ישראל',lastName:'ישראלי',className:'שיעור לא קיים'}]),/השיעור לא קיים/);
+});
+test('CSV donation import validates donor references and rejects duplicate rows atomically',t=>{
+ const {store,db}=fixture(t);
+ const donor=store.saveDonor({firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא'});
+ const result=store.importDonations([{donorCode:String(donor.id),year:'2027',occasion:'day14',amount:'180',notes:'מזומן'}]);
+ assert.equal(result.count,1);
+ assert.equal(store.db.prepare('SELECT SUM(amount) n FROM donations WHERE donor_id=?').get(donor.id).n,180);
+ assert.throws(()=>store.importDonations([{donorCode:String(donor.id),year:'2027',occasion:'day14',amount:'180',notes:'מזומן'},{donorCode:'9999',year:'2027',amount:'10'}]),/כבר קיימת במערכת/);
+ assert.equal(store.db.prepare('SELECT COUNT(*) n FROM donations').get().n,1);
+ assert.throws(()=>store.importDonations([{donorCode:'9999',year:'2027',amount:'10'}]),/אינו קיים במערכת/);
+});
