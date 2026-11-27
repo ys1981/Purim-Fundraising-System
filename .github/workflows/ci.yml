@@ -11,6 +11,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 22}
       - run: npm install
+      # Rebuild native SQLite binding for the Node.js runtime used by node --test.
+      - run: npm rebuild better-sqlite3
       - run: node --check src/main.cjs && node --check src/preload.cjs && node --check src/store.cjs && node --check src/security.cjs && node --check src/renderer.js
       - run: npm test
       - run: npm run build:win
