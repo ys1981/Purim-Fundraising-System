@@ -8,7 +8,7 @@ function actor(){return currentUser?.name||'מנהל מקומי'}function requir
 
 const PERMISSION_BY_CHANNEL={
  'app:bootstrap':'dashboard:read','donor:list':'donors:read','donor:archive-list':'donors:read','donor:archive':'donors:write','donor:restore':'donors:write','donor:save':'donors:write','donor:donation':'donations:create','donor:history':'donors:read',
- 'student:list':'students:read','student:save':'students:write','year:create':'settings:write','route:list':'routes:read','route:save':'routes:write',
+ 'student:list':'students:read','student:save':'students:write','street:list':'streets:read','street:save':'streets:write','street:alias':'streets:write','year:create':'settings:write','route:list':'routes:read','route:save':'routes:write',
  'backup:create':'backup:create','data:export':'backup:export','data:import':'backup:restore','phone:list':'phone:read','phone:add':'phone:manage','phone:update':'phone:manage','phone:restore':'donors:write',
  'users:add':'users:manage','groups:list':'groups:read','groups:create':'groups:manage','groups:add-member':'groups:manage','groups:add-donor':'groups:manage',
  'audit:list':'audit:read','diagnostics:run':'diagnostics:read','print:donors':'print:donors'
@@ -31,6 +31,9 @@ ipcMain.handle('donor:save',async(_e,x)=>{requireLogin();const r=store.saveDonor
 ipcMain.handle('donor:donation',async(_e,x)=>{requireLogin();const r=store.addDonation(x,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('donor:history',(_e,id)=>{requireLogin();store.db.prepare('INSERT INTO access_log(actor,action,entity_id,created_at) VALUES(?,?,?,?)').run(actor(),'צפייה בהיסטוריית תרומות',String(id),new Date().toISOString());return store.db.prepare('SELECT * FROM donations WHERE donor_id=? ORDER BY year DESC,created_at DESC').all(id)});
 ipcMain.handle('student:list',()=>{requireLogin();return store.listStudents()});
+ipcMain.handle('street:list',(_e,q)=>{requireLogin();return store.listStreets(q||'')});
+ipcMain.handle('street:save',async(_e,x)=>{requireLogin();const r=store.saveStreet(x,actor());await makeAutomaticBackup();return r});
+ipcMain.handle('street:alias',async(_e,x)=>{requireLogin();const r=store.addStreetAlias(x.streetId,x.alias,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('student:save',async(_e,x)=>{requireLogin();const r=store.saveStudent(x,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('year:create',async(_e,y)=>{requireLogin();const r=store.createYear(y);await makeAutomaticBackup();return r});
 ipcMain.handle('event:list',(_e,yearId)=>{requireLogin();return store.db.prepare('SELECT id,name,kind,event_date FROM collection_events WHERE year_id=? ORDER BY sort_order,id').all(Number(yearId))});
