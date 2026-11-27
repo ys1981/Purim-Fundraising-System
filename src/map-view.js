@@ -12,9 +12,7 @@
    {id:'building',type:'fill',source:'israel','source-layer':'building',minzoom:13,paint:{'fill-color':'#d6cfc2','fill-outline-color':'#b7ad9e','fill-opacity':0.9}},
    {id:'roads-casing',type:'line',source:'israel','source-layer':'transportation',paint:{'line-color':'#fff','line-width':['interpolate',['linear'],['zoom'],5,0.4,14,5]}},
    {id:'roads',type:'line',source:'israel','source-layer':'transportation',paint:{'line-color':'#e4ad72','line-width':['interpolate',['linear'],['zoom'],5,0.2,14,2.5]}},
-   {id:'road-labels',type:'symbol',source:'israel','source-layer':'transportation_name',minzoom:12,layout:{'text-field':['coalesce',['get','name:he'],['get','name']],'text-font':['Noto Sans Regular'],'text-size':11,'symbol-placement':'line'},paint:{'text-color':'#64564a','text-halo-color':'#fff','text-halo-width':1.2}},
-   {id:'places',type:'symbol',source:'israel','source-layer':'place',layout:{'text-field':['coalesce',['get','name:he'],['get','name']],'text-font':['Noto Sans Regular'],'text-size':['interpolate',['linear'],['zoom'],4,10,12,16]},paint:{'text-color':'#34445a','text-halo-color':'#fff','text-halo-width':1.4}},
-   {id:'house-numbers',type:'symbol',source:'israel','source-layer':'housenumber',minzoom:16,layout:{'text-field':['get','housenumber'],'text-font':['Noto Sans Regular'],'text-size':10},paint:{'text-color':'#55483e','text-halo-color':'#fff','text-halo-width':1}}
+
   ]
  };
  async function initOfflineMap(){
@@ -33,7 +31,10 @@
    const {lng,lat}=e.lngLat;
    if(marker)marker.remove();
    marker=new maplibregl.Marker({color:'#7257d5'}).setLngLat([lng,lat]).addTo(map);
-   $('mapFeatureInfo').textContent='נקודה שסומנה: קו רוחב '+lat.toFixed(6)+' · קו אורך '+lng.toFixed(6)+' (לחץ שוב כדי להזיז את הסמן).';
+   const features=map.queryRenderedFeatures(e.point);
+   const props=features.map(f=>f.properties||{}).find(p=>p.housenumber||p['addr:housenumber']||p.name||p['name:he']);
+   const detail=props?Object.entries(props).filter(([k,v])=>v&&(/name|house|addr|street|ref/i.test(k))).slice(0,6).map(([k,v])=>k+': '+v).join(' · '):'לא נמצא מידע כתובת מפורט בנקודה זו';
+   $('mapFeatureInfo').textContent='נקודה: '+lat.toFixed(6)+', '+lng.toFixed(6)+' · '+detail;
   });
   map.on('error',e=>{if(e?.error)$('mapStatus').textContent='שגיאה בטעינת נתוני מפה מקומיים';});
   $('mapLocateBtn').onclick=()=>map.flyTo({center:[34.85,31.45],zoom:7.1});
