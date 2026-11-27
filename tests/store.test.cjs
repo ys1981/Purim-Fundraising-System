@@ -173,3 +173,25 @@ test('donation entry rejects zero, negative and invalid amounts and invalid year
  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM donations').get().n,0);
  assert.equal(store.addDonation({donorId:donor.id,year:2027,amount:0.5})>0,true);
 });
+
+test('CSV donor import inserts validated records in one operation',t=>{
+ const {store}=fixture(t);
+ const result=store.importDonors([{firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא',phone:'0501234567'},{firstName:'משה',lastName:'כהן',city:'ירושלים',street:'יפו',building:'12'}]);
+ assert.equal(result.count,2);
+ assert.equal(store.listDonors().length,2);
+ assert.equal(store.listDonors().find(d=>d.first_name==='דוד').phone,'0501234567');
+});
+test('CSV donor import rejects a duplicate in the file before inserting',t=>{
+ const {store}=fixture(t);
+ const rows=[{firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא'},{firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא'}];
+ assert.throws(()=>store.importDonors(rows),/תורם כפול בקובץ/);
+ assert.equal(store.listDonors().length,0);
+});
+test('CSV donor import rolls back all rows when a database duplicate is found',t=>{
+ const {store}=fixture(t);
+ store.saveDonor({firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא'});
+ const rows=[{firstName:'משה',lastName:'כהן',city:'ירושלים',street:'יפו'},{firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא'}];
+ assert.throws(()=>store.importDonors(rows),/תורם כבר קיים במערכת/);
+ assert.equal(store.listDonors().length,1);
+ assert.equal(store.listDonors()[0].first_name,'דוד');
+});
