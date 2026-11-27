@@ -141,3 +141,24 @@ test('routes can own street ranges and unique student pairs',t=>{
  assert.equal(store.removeRouteStreet(routeId,street.id),true);
  assert.equal(store.listRouteStreets(routeId).length,0);
 });
+
+
+test('backup import rejects unknown SQL column names before changing live data',t=>{
+ const {store}=fixture(t);
+ const donor=store.saveDonor({firstName:'נתונים',lastName:'מקוריים',city:'ירושלים',street:'יפו'});
+ const backup=JSON.parse(JSON.stringify(store.exportData()));
+ backup.tables.donors[0]['id) VALUES (1); DELETE FROM donors; --']='attack';
+ assert.throws(()=>store.importData(backup),/עמודה לא מוכרת/);
+ assert.equal(store.listDonors().length,1);
+ assert.equal(store.listDonors()[0].id,donor.id);
+});
+
+test('backup import rejects malformed table rows before deleting existing records',t=>{
+ const {store}=fixture(t);
+ store.saveDonor({firstName:'נשמר',lastName:'במערכת',city:'בני ברק',street:'רבי עקיבא'});
+ const backup=store.exportData();
+ backup.tables.donors='not-an-array';
+ assert.throws(()=>store.importData(backup),/מבנה טבלת גיבוי/);
+ assert.equal(store.listDonors().length,1);
+ assert.equal(store.listDonors()[0].first_name,'נשמר');
+});
