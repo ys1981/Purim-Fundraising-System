@@ -1,5 +1,8 @@
 name: Build and test
 on: [push, pull_request]
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: windows-latest
@@ -8,5 +11,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 22}
       - run: npm install
+      - run: node --check src/main.cjs && node --check src/preload.cjs && node --check src/store.cjs && node --check src/security.cjs && node --check src/renderer.js
       - run: npm test
       - run: npm run build:win
