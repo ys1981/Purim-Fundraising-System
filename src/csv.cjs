@@ -17,5 +17,18 @@ function parseDonorCsv(input){
  for(const key of ['firstName','lastName','city','street'])if(indexes[key]===undefined)throw Error('חסרה עמודה נדרשת: '+HEADERS.find(x=>x[0]===key)[1]);
  return rows.slice(1).map((cells,index)=>{const out={};for(const [key] of HEADERS)out[key]=cells[indexes[key]]??'';out.doNotContact=/^(1|כן|true|yes)$/i.test(String(out.doNotContact).trim())?1:0;return out}).filter(x=>Object.values(x).some(v=>String(v).trim()!==''));
 }
+
+const STUDENT_HEADERS=[['firstName','שם פרטי'],['lastName','שם משפחה'],['className','שיעור'],['phone','טלפון בחור'],['fatherPhone','טלפון אב'],['notes','הערות']];
+const DONATION_HEADERS=[['donorCode','קוד תורם'],['year','שנת קמפיין'],['occasion','מועד (night14/day14/day15)'],['amount','סכום'],['notes','הערות תרומה']];
+function parseMappedCsv(input,columns,required){
+ const rows=parseCsv(input);if(rows.length<2)throw Error('קובץ הייבוא ריק או חסרה בו שורת נתונים');
+ const indexes={};rows[0].forEach((label,i)=>{const found=columns.find(([key,name])=>name===label.trim()||key===label.trim());if(found)indexes[found[0]]=i});
+ for(const key of required)if(indexes[key]===undefined)throw Error('חסרה עמודה נדרשת: '+columns.find(x=>x[0]===key)[1]);
+ return rows.slice(1).map((cells,index)=>{const out={};for(const [key] of columns)out[key]=String(cells[indexes[key]]??'').trim();out._row=index+2;return out}).filter(x=>columns.some(([key])=>String(x[key]??'').trim()!==''));
+}
+function parseStudentCsv(input){return parseMappedCsv(input,STUDENT_HEADERS,['firstName','lastName','className']).map(({_row,...x})=>x)}
+function parseDonationCsv(input){return parseMappedCsv(input,DONATION_HEADERS,['donorCode','year','amount']).map(({_row,...x})=>x)}
+function studentTemplateCsv(){return '\uFEFF'+STUDENT_HEADERS.map(x=>x[1]).join(',')+'\r\n'}
+function donationTemplateCsv(){return '\uFEFF'+DONATION_HEADERS.map(x=>x[1]).join(',')+'\r\n'}
 function templateCsv(){return stringifyCsv([])}
-module.exports={HEADERS,stringifyCsv,parseCsv,parseDonorCsv,templateCsv};
+module.exports={HEADERS,stringifyCsv,parseCsv,parseDonorCsv,templateCsv,STUDENT_HEADERS,DONATION_HEADERS,parseStudentCsv,parseDonationCsv,studentTemplateCsv,donationTemplateCsv};
