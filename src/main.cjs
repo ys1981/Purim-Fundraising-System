@@ -14,7 +14,7 @@ app.whenReady().then(async()=>{
  protocol.handle('purim-map',async request=>{
   try{
    if(!mapDb)return new Response('מפת ישראל אינה זמינה במתקין זה',{status:503});
-   const u=new URL(request.url),m=u.pathname.match(/^\\/(\\d+)\\/(\\d+)\\/(\\d+)\\.pbf$/);
+   const u=new URL(request.url),m=u.pathname.match(/^\/(\d+)\/(\d+)\/(\d+)\.pbf$/);
    if(u.hostname!=='tiles'||!m)return new Response('Not found',{status:404});
    const z=Number(m[1]),x=Number(m[2]),y=Number(m[3]);
    if(!Number.isInteger(z)||z<0||z>16||x<0||y<0||x>=2**z||y>=2**z)return new Response('Not found',{status:404});
