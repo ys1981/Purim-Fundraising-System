@@ -325,3 +325,15 @@ test('financial records are included in full offline JSON backup and restore',t=
  assert.equal(store.listCommitments(2027)[0].outstanding_amount,200);
  assert.equal(store.listPayments(2027).length,1);
 });
+
+test('donor visit log validates dates and stores follow-up locally',t=>{
+ const {store,db}=fixture(t);
+ const donor=store.saveDonor({firstName:'דוד',lastName:'כהן',city:'גבעת שמואל',street:'הזיתים'});
+ const id=store.addVisit({donorId:donor.id,year:2027,visitDate:'2027-02-20',outcome:'follow_up',nextVisitDate:'2027-02-27',notes:'לתאם ביקור חוזר'},'בודק');
+ const [visit]=store.listVisits(2027);
+ assert.equal(visit.id,id);assert.equal(visit.outcome,'follow_up');assert.equal(visit.next_visit_date,'2027-02-27');assert.equal(visit.visited_by,'בודק');
+ assert.throws(()=>store.addVisit({donorId:donor.id,year:2027,visitDate:'2027-02-30'}),/תאריך הביקור/);
+ assert.throws(()=>store.addVisit({donorId:donor.id,year:2027,visitDate:'2027-02-20',nextVisitDate:'2027-02-19'}),/לפני הביקור/);
+ assert.throws(()=>store.addVisit({donorId:999,year:2027,visitDate:'2027-02-20'}),/תורם פעיל/);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM donor_visits').get().n,1);
+});
