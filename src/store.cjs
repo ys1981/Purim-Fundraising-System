@@ -11,7 +11,7 @@ function createStore(db){
  function addDonation(x,actor='מנהל'){
   const amount=Number(x?.amount),year=Number(x?.year),donorId=Number(x?.donorId),method=String(x?.paymentMethod||'cash');
   const commitmentId=x?.commitmentId?Number(x.commitmentId):null;
-  if(!Number.isFinite(amount)||amount<=0)throw Error('סכום התשלום חייב להיות גדול מאפס');
+  if(!Number.isFinite(amount)||amount<=0)throw Error('סכום התרומה חייב להיות גדול מאפס');
   if(!Number.isInteger(year)||year<2000||year>2200)throw Error('שנת התרומה אינה תקינה');
   if(!Number.isSafeInteger(donorId)||donorId<=0)throw Error('קוד התורם אינו תקין');
   if(!['cash','check','transfer','credit','other'].includes(method))throw Error('אמצעי התשלום אינו תקין');
@@ -38,7 +38,7 @@ function createStore(db){
     if(paid>=commitment.amount-0.00001)db.prepare("UPDATE commitments SET status='paid' WHERE id=?").run(commitmentId);
    }
    audit(actor,'רישום תשלום והפקת קבלה','donation',id,null,{...x,donorId,year,amount:rounded,paymentMethod:method,commitmentId,receiptNumber:receipt});
-   return {id,receiptNumber:receipt};
+   return id;
   })();
  }
  function addCommitment(x,actor='מנהל'){
@@ -64,6 +64,7 @@ function createStore(db){
  function getReceipt(id){
   return db.prepare("SELECT p.*,d.title,d.first_name,d.last_name,d.city,d.street,d.building,d.phone,c.amount commitment_amount FROM donations p JOIN donors d ON d.id=p.donor_id LEFT JOIN commitments c ON c.id=p.commitment_id WHERE p.id=?").get(Number(id))||null;
  }
+ function addPayment(x,actor='מנהל'){const id=addDonation(x,actor),receipt=getReceipt(id);return {id,receiptNumber:receipt?.receipt_number||''};}
  function listArchivedDonors(q=''){const like='%'+q+'%';return db.prepare(`SELECT d.*,COALESCE((SELECT SUM(amount) FROM donations WHERE donor_id=d.id),0) total_donations FROM donors d WHERE d.status='archived' AND (?='' OR d.first_name||' '||d.last_name||d.city||d.street||d.phone LIKE ?) ORDER BY d.id DESC`).all(q,like)}
  function archiveDonor(id,reason,untilYear,actor='מנהל'){const before=db.prepare('SELECT * FROM donors WHERE id=?').get(id);if(!before)throw Error('התורם לא נמצא');if(before.status==='archived')throw Error('התורם כבר נמצא בארכיון');if(!String(reason||'').trim())throw Error('יש לציין סיבת העברה לארכיון');db.prepare("UPDATE donors SET status='archived',archive_reason=?,archive_until_year=?,updated_at=? WHERE id=?").run(String(reason).trim(),untilYear?Number(untilYear):null,now(),id);const after=db.prepare('SELECT * FROM donors WHERE id=?').get(id);audit(actor,'העברת תורם לארכיון','donor',id,before,after);return after}
  function restoreDonor(id,actor='מנהל'){const before=db.prepare('SELECT * FROM donors WHERE id=?').get(id);if(!before)throw Error('התורם לא נמצא');if(before.status!=='archived')throw Error('התורם אינו בארכיון');db.prepare("UPDATE donors SET status='active',archive_reason=NULL,archive_until_year=NULL,updated_at=? WHERE id=?").run(now(),id);const after=db.prepare('SELECT * FROM donors WHERE id=?').get(id);audit(actor,'החזרת תורם מהארכיון','donor',id,before,after);return after}
@@ -218,6 +219,6 @@ function createStore(db){
  function removeGroupDonor(groupId,donorId,actor='מנהל'){const r=db.prepare('DELETE FROM group_donors WHERE group_id=? AND donor_id=?').run(Number(groupId),Number(donorId));if(r.changes)audit(actor,'הסרת תורם מקבוצה','group',groupId,null,{donorId});return r.changes>0}
  function addGroupMember(groupId,studentId,actor='מנהל'){db.prepare('INSERT OR IGNORE INTO group_members(group_id,student_id) VALUES(?,?)').run(groupId,studentId);audit(actor,'שיוך בחור לקבוצה','group',groupId,null,{studentId});return true}
  function addGroupDonor(groupId,donorId,actor='מנהל'){db.prepare('INSERT OR IGNORE INTO group_donors(group_id,donor_id) VALUES(?,?)').run(groupId,donorId);audit(actor,'שיוך תורם לקבוצה','group',groupId,null,{donorId});return true}
- return {db,audit,createFirstAdmin,addCommitment,listCommitments,listPayments,getReceipt,importDonors,importStudents,importDonations,importWorkbookData,findDonorByCode,listDonors,listArchivedDonors,archiveDonor,restoreDonor,saveDonor,addDonation,listStudents,saveStudent,listStreets,saveStreet,addStreetAlias,listRouteStreets,assignRouteStreet,removeRouteStreet,listRoutePairs,saveRoutePair,removeRoutePair,createYear,listAudit,summary,campaignReport,addUser,login,exportData,importData,listPhoneQueue,enqueuePhone,updatePhoneQueue,restorePhoneDonor,listGroups,createGroup,listGroupMembers,listGroupDonors,addGroupMember,addGroupDonor,removeGroupMember,removeGroupDonor};
+ return {db,audit,createFirstAdmin,addCommitment,listCommitments,listPayments,getReceipt,addPayment,importDonors,importStudents,importDonations,importWorkbookData,findDonorByCode,listDonors,listArchivedDonors,archiveDonor,restoreDonor,saveDonor,addDonation,listStudents,saveStudent,listStreets,saveStreet,addStreetAlias,listRouteStreets,assignRouteStreet,removeRouteStreet,listRoutePairs,saveRoutePair,removeRoutePair,createYear,listAudit,summary,campaignReport,addUser,login,exportData,importData,listPhoneQueue,enqueuePhone,updatePhoneQueue,restorePhoneDonor,listGroups,createGroup,listGroupMembers,listGroupDonors,addGroupMember,addGroupDonor,removeGroupMember,removeGroupDonor};
 }
 module.exports={createStore};

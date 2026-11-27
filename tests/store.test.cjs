@@ -290,12 +290,12 @@ test('commitments accept partial payments, prevent overpayment and create printa
  const donor=store.saveDonor({firstName:'משה',lastName:'לוי',city:'בני ברק',street:'חזון איש',building:'12'});
  const commitmentId=store.addCommitment({donorId:donor.id,year:2027,amount:500,dueDate:'2027-03-01',notes:'התחייבות שנתית'});
  assert.ok(commitmentId>0);
- const first=store.addDonation({donorId:donor.id,year:2027,amount:200,commitmentId,paymentMethod:'cash',notes:'תשלום ראשון'});
+ const first=store.addPayment({donorId:donor.id,year:2027,amount:200,commitmentId,paymentMethod:'cash',notes:'תשלום ראשון'});
  assert.match(first.receiptNumber,/^PF-2027-/);
  assert.equal(store.listCommitments(2027)[0].paid_amount,200);
  assert.equal(store.listCommitments(2027)[0].outstanding_amount,300);
  assert.throws(()=>store.addDonation({donorId:donor.id,year:2027,amount:301,commitmentId,paymentMethod:'check'}),/יתרת ההתחייבות/);
- const second=store.addDonation({donorId:donor.id,year:2027,amount:300,commitmentId,paymentMethod:'transfer'});
+ const second=store.addPayment({donorId:donor.id,year:2027,amount:300,commitmentId,paymentMethod:'transfer'});
  assert.ok(second.receiptNumber);
  assert.equal(store.listCommitments(2027)[0].status,'paid');
  assert.equal(store.listCommitments(2027)[0].outstanding_amount,0);

@@ -107,7 +107,7 @@ ipcMain.handle('groups:add-member',async(_e,x)=>{requireLogin();const r=store.ad
 ipcMain.handle('groups:add-donor',async(_e,x)=>{requireLogin();const r=store.addGroupDonor(x.groupId,x.donorId,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('finance:list',(_e,year)=>{requireLogin();return {commitments:store.listCommitments(year),payments:store.listPayments(year)}});
 ipcMain.handle('finance:commitment',async(_e,x)=>{requireLogin();const id=store.addCommitment(x,actor());await makeAutomaticBackup();return id});
-ipcMain.handle('finance:payment',async(_e,x)=>{requireLogin();const result=store.addDonation(x,actor());await makeAutomaticBackup();return result});
+ipcMain.handle('finance:payment',async(_e,x)=>{requireLogin();const result=store.addPayment(x,actor());await makeAutomaticBackup();return result});
 ipcMain.handle('finance:receipt-print',async(_e,id)=>{
  requireLogin();const receipt=store.getReceipt(id);if(!receipt)throw Error('הקבלה לא נמצאה');
  const method={cash:'מזומן',check:'המחאה',transfer:'העברה בנקאית',credit:'כרטיס אשראי',other:'אחר'}[receipt.payment_method]||'אחר';
