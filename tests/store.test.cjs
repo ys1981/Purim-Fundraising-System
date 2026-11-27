@@ -48,7 +48,16 @@ test('full JSON backup restores linked records',t=>{
  const {store}=fixture(t);
  const yearId=store.createYear(2028);
  const donor=store.saveDonor({firstName:'אברהם',lastName:'לוי',city:'בית שמש',street:'נהר הירדן'});
+ const student=store.saveStudent({firstName:'יעקב',lastName:'כהן'});
  store.addDonation({donorId:donor.id,year:2028,amount:250});
+ const eventId=store.db.prepare('SELECT id FROM collection_events WHERE year_id=? ORDER BY id LIMIT 1').get(yearId).id;
+ const groupId=store.createGroup({yearId,name:'קבוצה א',city:'בית שמש',area:'מרכז',eventId});
+ store.addGroupMember(groupId,student);
+ store.addGroupDonor(groupId,donor.id);
+ const streetId=store.db.prepare('INSERT INTO streets(city,name,area) VALUES(?,?,?)').run('בית שמש','נהר הירדן','מרכז').lastInsertRowid;
+ const routeId=store.db.prepare('INSERT INTO routes(year_id,event_id,route_code,name) VALUES(?,?,?,?)').run(yearId,eventId,'A1','מסלול א').lastInsertRowid;
+ store.db.prepare('INSERT INTO route_streets(route_id,street_id) VALUES(?,?)').run(routeId,streetId);
+ store.db.prepare('INSERT INTO route_pairs(route_id,student_a) VALUES(?,?)').run(routeId,student);
  const backup=store.exportData();
  store.saveDonor({firstName:'אחר',lastName:'אדם',city:'ירושלים',street:'הנביאים'});
  store.importData(backup);
@@ -56,6 +65,9 @@ test('full JSON backup restores linked records',t=>{
  assert.equal(store.listDonors()[0].first_name,'אברהם');
  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM donations').get().n,1);
  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM collection_events WHERE year_id=?').get(yearId).n,3);
+ assert.equal(store.db.prepare('SELECT COUNT(*) n FROM group_members').get().n,1);
+ assert.equal(store.db.prepare('SELECT COUNT(*) n FROM route_streets').get().n,1);
+ assert.equal(store.db.prepare('SELECT COUNT(*) n FROM route_pairs').get().n,1);
 });
 
 test('front desk and collector role presets allow initial login',t=>{
