@@ -54,7 +54,7 @@ ipcMain.handle('donor:save',async(_e,x)=>{requireLogin();const r=store.saveDonor
 ipcMain.handle('donor:donation',async(_e,x)=>{requireLogin();const r=store.addDonation(x,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('donor:history',(_e,id)=>{requireLogin();store.db.prepare('INSERT INTO access_log(actor,action,entity_id,created_at) VALUES(?,?,?,?)').run(actor(),'צפייה בהיסטוריית תרומות',String(id),new Date().toISOString());return store.db.prepare('SELECT * FROM donations WHERE donor_id=? ORDER BY year DESC,created_at DESC').all(id)});
 ipcMain.handle('student:list',()=>{requireLogin();return store.listStudents()});
-ipcMain.handle('map:status',()=>({available:!!mapDb,source:'OpenStreetMap',maxZoom:16,attribution:'© OpenStreetMap contributors · ODbL'}));
+ipcMain.handle('map:status',()=>({available:!!mapDb,source:'OpenStreetMap / Shortbread',maxZoom:14,attribution:'© OpenStreetMap contributors · ODbL'}));
 ipcMain.handle('street:list',(_e,q)=>{requireLogin();return store.listStreets(q||'')});
 ipcMain.handle('street:save',async(_e,x)=>{requireLogin();const r=store.saveStreet(x,actor());await makeAutomaticBackup();return r});
 ipcMain.handle('street:alias',async(_e,x)=>{requireLogin();const r=store.addStreetAlias(x.streetId,x.alias,actor());await makeAutomaticBackup();return r});
