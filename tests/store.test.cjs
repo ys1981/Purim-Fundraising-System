@@ -216,3 +216,15 @@ test('CSV donation import validates donor references and rejects duplicate rows 
  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM donations').get().n,1);
  assert.throws(()=>store.importDonations([{donorCode:'9999',year:'2027',amount:'10'}]),/אינו קיים במערכת/);
 });
+
+test('workbook import is atomic across donors, students and donations',t=>{
+ const {store,db}=fixture(t);
+ const cls=db.prepare('SELECT name FROM classes ORDER BY sort_order LIMIT 1').get().name;
+ const data={donors:[{firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא',building:'12'}],students:[{firstName:'משה',lastName:'כהן',className:cls}],donations:[{donorCode:'9876',firstName:'דוד',lastName:'לוי',city:'בני ברק',street:'רבי עקיבא',building:'12',year:'2027',amount:'100',occasion:'day14'}]};
+ const result=store.importWorkbookData(data);
+ assert.deepEqual(result,{donors:1,students:1,donations:1});
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM donations').get().n,1);
+ assert.equal(db.prepare('SELECT donor_id FROM donations').get().donor_id,db.prepare('SELECT id FROM donors').get().id);
+ assert.throws(()=>store.importWorkbookData({donors:[{firstName:'רחל',lastName:'כהן',city:'בני ברק',street:'חזון איש'}],students:[{firstName:'ללא',lastName:'שיעור',className:'שיעור לא קיים'}]}),/השיעור לא קיים/);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM donors').get().n,1,'donor insert must roll back if a later sheet fails');
+});
